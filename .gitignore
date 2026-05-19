@@ -1,0 +1,13 @@
+# never commit live secrets/runtime state
+.env
+auth.json
+state.db*
+logs/
+sessions/
+pastes/
+*.sqlite3
+*.db
+*.db-*
+__pycache__/
+.venv/
+.DS_Store
