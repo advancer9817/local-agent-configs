@@ -483,12 +483,4 @@ custom_providers:
   base_url: https://api.apikey.fun
   api_key: "<REDACTED>"
   api_mode: anthropic_messages
-mcp_servers:
-  local_memory:
-    enabled: true
-    command: /home/advancer/.agent-memory/local-memory-mcp/.venv/bin/python
-    args:
-    - /home/advancer/.agent-memory/local-memory-mcp/local_memory_mcp.py
-    - serve
-    timeout: 120
-    connect_timeout: 60
+mcp_servers: {}
