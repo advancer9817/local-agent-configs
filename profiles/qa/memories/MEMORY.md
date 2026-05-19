@@ -2,7 +2,7 @@ User installed Node.js via nvm (LTS v24.15.0) and Codex CLI (v0.130.0) inside WS
 §
 USER ENVIRONMENT: WSL on Windows, home=/home/advancer, timezone=Asia/Shanghai. Shell: zsh + Oh My Zsh + powerlevel10k theme. Terminal tools: eza (ls replacement), zsh-syntax-highlighting, zsh-autosuggestions.
 §
-AI AGENT STACK: Codex CLI v0.130.0 (gpt-5.5 via local proxy :15721), Claude Code v2.1.123, Hermes Agent. lmmcp independent project: /home/advancer/project/local-memory-mcp. Ollama 0.23.2 runs at http://127.0.0.1:11434 with nomic-embed-text:latest; lmmcp semantic provider defaults to Ollama 768-dim with hashing fallback via env.
+AI AGENT STACK: Codex CLI v0.130.0 (gpt-5.5 via local proxy :15721), Claude Code v2.1.123, Hermes Agent. local-memory-mcp project: /home/advancer/.agent-memory/local-memory-mcp. Ollama 0.23.2 runs at http://127.0.0.1:11434 with nomic-embed-text:latest; local-memory-mcp semantic provider defaults to Ollama 768-dim with hashing fallback via env.
 §
 KNOWN ISSUE — WSL NETWORK: WSL internal network latency is significantly higher than Windows host for API calls. DeepSeek (api.deepseek.com) and openai-codex (chatgpt.com/backend-api/codex) both suffer intermittent APIConnectionError in WSL, while same models work fine on Windows host. This is the user's primary pain point.
 §

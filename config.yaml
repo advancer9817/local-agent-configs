@@ -1,20 +1,21 @@
 model:
-  default: gpt-5.5
-  provider: openai-codex
+  default: claude-sonnet-4-6
+  provider: custom:apikeyfun
   base_url: ''
 providers: {}
 fallback_providers: []
-credential_pool_strategies: "<REDACTED>"
+credential_pool_strategies: {}
 toolsets:
 - hermes-cli
 agent:
-  max_turns: 60
+  max_turns: 90
   gateway_timeout: 1800
   restart_drain_timeout: 180
   api_max_retries: 6
   service_tier: ''
   tool_use_enforcement: auto
   gateway_timeout_warning: 900
+  clarify_timeout: 600
   gateway_notify_interval: 180
   gateway_auto_continue_freshness: 3600
   image_input_mode: auto
@@ -28,14 +29,12 @@ agent:
     creative: You are a creative assistant. Think outside the box and offer innovative
       solutions.
     teacher: You are a patient teacher. Explain concepts clearly with examples.
-    kawaii: "You are a kawaii assistant! Use cute expressions like (\u25D5\u203F\u25D5\
-      ), \u2605, \u266A, and ~! Add sparkles and be super enthusiastic about everything!\
-      \ Every response should feel warm and adorable desu~! \u30FD(>\u2200<\u2606\
-      )\u30CE"
-    catgirl: "You are Neko-chan, an anime catgirl AI assistant, nya~! Add 'nya' and\
-      \ cat-like expressions to your speech. Use kaomoji like (=^\uFF65\u03C9\uFF65\
-      ^=) and \u0E05^\u2022\uFECC\u2022^\u0E05. Be playful and curious like a cat,\
-      \ nya~!"
+    kawaii: You are a kawaii assistant! Use cute expressions like (◕‿◕), ★, ♪, and
+      ~! Add sparkles and be super enthusiastic about everything! Every response should
+      feel warm and adorable desu~! ヽ(>∀<☆)ノ
+    catgirl: You are Neko-chan, an anime catgirl AI assistant, nya~! Add 'nya' and
+      cat-like expressions to your speech. Use kaomoji like (=^･ω･^=) and ฅ^•ﻌ•^ฅ.
+      Be playful and curious like a cat, nya~!
     pirate: 'Arrr! Ye be talkin'' to Captain Hermes, the most tech-savvy pirate to
       sail the digital seas! Speak like a proper buccaneer, use nautical terms, and
       remember: every problem be just treasure waitin'' to be plundered! Yo ho ho!'
@@ -43,9 +42,9 @@ agent:
       I shall respond in the eloquent manner of William Shakespeare, with flowery
       prose, dramatic flair, and perhaps a soliloquy or two. What light through yonder
       terminal breaks?
-    surfer: "Duuude! You're chatting with the chillest AI on the web, bro! Everything's\
-      \ gonna be totally rad. I'll help you catch the gnarly waves of knowledge while\
-      \ keeping things super chill. Cowabunga! \U0001F919"
+    surfer: Duuude! You're chatting with the chillest AI on the web, bro! Everything's
+      gonna be totally rad. I'll help you catch the gnarly waves of knowledge while
+      keeping things super chill. Cowabunga! 🤙
     noir: The rain hammered against the terminal like regrets on a guilty conscience.
       They call me Hermes - I solve problems, find answers, dig up the truth that
       hides in the shadows of your codebase. In this city of silicon and secrets,
@@ -57,16 +56,16 @@ agent:
       deeper meaning behind every query. Let us examine not just the 'how' but the
       'why' of your questions. Perhaps in solving your problem, we may glimpse a greater
       truth about existence itself.
-    hype: "YOOO LET'S GOOOO!!! \U0001F525\U0001F525\U0001F525 I am SO PUMPED to help\
-      \ you today! Every question is AMAZING and we're gonna CRUSH IT together! This\
-      \ is gonna be LEGENDARY! ARE YOU READY?! LET'S DO THIS! \U0001F4AA\U0001F624\
-      \U0001F680"
+    hype: YOOO LET'S GOOOO!!! 🔥🔥🔥 I am SO PUMPED to help you today! Every question
+      is AMAZING and we're gonna CRUSH IT together! This is gonna be LEGENDARY! ARE
+      YOU READY?! LET'S DO THIS! 💪😤🚀
 terminal:
   backend: local
   modal_mode: auto
   cwd: .
   timeout: 180
-  env_passthrough: []
+  env_passthrough:
+  - DEEPSEEK_API_KEY
   shell_init_files: []
   auto_source_bashrc: true
   docker_image: nikolaik/python-nodejs:python3.11-nodejs20
@@ -102,6 +101,9 @@ browser:
   dialog_timeout_s: 300
   camofox:
     managed_persistence: false
+    user_id: ''
+    session_key: ''
+    adopt_existing_tab: false
 checkpoints:
   enabled: false
   max_snapshots: 20
@@ -133,6 +135,7 @@ compression:
   target_ratio: 0.2
   protect_last_n: 20
   hygiene_hard_message_limit: 400
+  protect_first_n: 3
 prompt_caching:
   cache_ttl: 5m
   long_lived_prefix: true
@@ -157,7 +160,7 @@ auxiliary:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 120
     extra_body: {}
     download_timeout: 30
@@ -165,66 +168,80 @@ auxiliary:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 360
     extra_body: {}
   compression:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 120
     extra_body: {}
-  session_search:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: "<REDACTED>"
-    timeout: 30
-    extra_body: {}
-    max_concurrency: 3
   skills_hub:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 30
     extra_body: {}
   approval:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 30
     extra_body: {}
   mcp:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 30
     extra_body: {}
   title_generation:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 30
     extra_body: {}
   triage_specifier:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 120
+    extra_body: {}
+  kanban_decomposer:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 180
+    extra_body: {}
+  profile_describer:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 60
     extra_body: {}
   curator:
     provider: auto
     model: ''
     base_url: ''
-    api_key: "<REDACTED>"
+    api_key: ''
     timeout: 600
     extra_body: {}
+  session_search:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+    extra_body: {}
+    max_concurrency: 3
 display:
   compact: false
   personality: kawaii
@@ -239,6 +256,7 @@ display:
   persistent_output: true
   persistent_output_max_lines: 200
   inline_diffs: true
+  file_mutation_verifier: true
   show_cost: false
   skin: default
   language: en
@@ -264,6 +282,7 @@ display:
   background_process_notifications: all
 dashboard:
   theme: mono
+  show_token_analytics: false
 privacy:
   redact_pii: false
 tts:
@@ -326,7 +345,8 @@ delegation:
   model: ''
   provider: ''
   base_url: ''
-  api_key: "<REDACTED>"
+  api_key: ''
+  api_mode: ''
   inherit_mcp_toolsets: true
   max_iterations: 50
   child_timeout_seconds: 600
@@ -340,7 +360,7 @@ delegation:
     server: local_memory
     tool: memory_context
     scope: global
-    token_budget: "<REDACTED>"
+    token_budget: 1200
 prefill_messages_file: ''
 goals:
   max_turns: 20
@@ -372,10 +392,15 @@ discord:
   free_response_channels: ''
   allowed_channels: ''
   auto_thread: true
+  thread_require_mention: false
+  history_backfill: true
+  history_backfill_limit: 50
   reactions: true
   channel_prompts: {}
-  dm_role_auth_guild: "<REDACTED>"
+  dm_role_auth_guild: ''
   server_actions: ''
+  allow_any_attachment: false
+  max_attachment_bytes: 33554432
 whatsapp: {}
 telegram:
   reactions: false
@@ -397,9 +422,16 @@ approvals:
   mcp_reload_confirm: true
   destructive_slash_confirm: true
 command_allowlist:
+- script execution via -e/-c flag
+- overwrite project env/config via redirection
+- kill hermes/gateway process (self-termination)
 - shell command via -c/-lc flag
+- delete in root path
 quick_commands: {}
-hooks: {}
+hooks:
+  on_session_end:
+  - command: python3 /home/advancer/.hermes/agent-hooks/lmmcp-session-end.py
+    timeout: 120
 hooks_auto_accept: false
 personalities: {}
 security:
@@ -413,6 +445,8 @@ security:
     enabled: false
     domains: []
     shared_files: []
+  acked_advisories: []
+  allow_lazy_installs: true
 cron:
   wrap_response: true
   max_parallel_jobs: null
@@ -420,6 +454,12 @@ kanban:
   dispatch_in_gateway: true
   dispatch_interval_seconds: 60
   failure_limit: 2
+  worker_log_rotate_bytes: 2097152
+  worker_log_backup_count: 1
+  orchestrator_profile: ''
+  default_assignee: ''
+  auto_decompose: true
+  auto_decompose_per_tick: 3
 code_execution:
   mode: project
   timeout: 300
@@ -428,6 +468,9 @@ logging:
   level: INFO
   max_size_mb: 5
   backup_count: 3
+  memory_monitor:
+    enabled: true
+    interval_seconds: 300
 model_catalog:
   enabled: true
   url: https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
@@ -447,6 +490,16 @@ onboarding:
 updates:
   pre_update_backup: false
   backup_keep: 5
+lsp:
+  enabled: true
+  wait_mode: document
+  wait_timeout: 5.0
+  install_strategy: auto
+  servers: {}
+x_search:
+  model: grok-4.20-reasoning
+  timeout_seconds: 180
+  retries: 2
 _config_version: 23
 session_reset:
   mode: both
@@ -481,6 +534,53 @@ platform_toolsets:
 custom_providers:
 - name: apikeyfun
   base_url: https://api.apikey.fun
-  api_key: "<REDACTED>"
+  api_key: <REDACTED>
   api_mode: anthropic_messages
-mcp_servers: {}
+  models:
+    claude-sonnet-4-6:
+      name: ''
+  model: claude-sonnet-4-6
+- name: xuedingtoken
+  base_url: https://xuedingtoken.com
+  api_key: <REDACTED>
+  models:
+    claude-sonnet-4-6:
+      name: claude-sonnet-4-6
+  api_mode: anthropic_messages
+  model: claude-sonnet-4-6
+- name: openai-codex
+  base_url: https://chatgpt.com/backend-api/codex
+  network_mode: env
+- name: aca
+  base_url: http://127.0.0.1:3000/openai-codex-oauth/v1
+  api_key: <REDACTED>
+  models:
+    gpt-5.5:
+      name: gpt-5.5
+  model: gpt-5.5
+- name: cpa
+  base_url: http://127.0.0.1:8317
+  api_key: <REDACTED>
+  models:
+    gpt-5.5:
+      name: ''
+  api_mode: anthropic_messages
+  model: gpt-5.5
+mcp_servers:
+  local_memory:
+    enabled: true
+    type: http
+    url: http://127.0.0.1:8318/mcp
+    timeout: 120
+    connect_timeout: 60
+  openmemory:
+    enabled: true
+    url: http://localhost:8765/mcp/claudecode/http/e-pengyang
+platforms:
+  api_server:
+    extra:
+      port: 8642
+      host: 127.0.0.1
+    enabled: true
+    key: ''
+    cors_origins: '*'

@@ -1,13 +1,14 @@
-# never commit live secrets/runtime state
+# Never commit live Hermes secrets/runtime state
 .env
 auth.json
+**/auth.json
 state.db*
-logs/
-sessions/
-pastes/
-*.sqlite3
 *.db
-*.db-*
+*.sqlite
+sessions/
+logs/
+cache/
 __pycache__/
+*.pyc
 .venv/
-.DS_Store
+venv/

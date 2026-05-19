@@ -75,3 +75,27 @@ M	profiles/security/config.yaml
 M	profiles/security/memories/MEMORY.md
 ```
 
+
+
+## 2026-05-19 17:37:35 - Sync local Hermes agent configs
+
+### 目的
+- 将当前本机 Hermes Agent 配置、General Multi-Agent Router SOUL、SDLC role profiles、profile memories/reference 文档导出到本仓库，形成可版本化的本地配置备份。
+
+### 变更摘要
+- 更新根配置：`config.yaml`、`SOUL.md`、`memories/`。
+- 更新 profiles：`coord`、`req`、`design`、`impl`、`qa`、`review`、`security`、`commitint` 的 `config.yaml`、`SOUL.md` 与 memories。
+- 更新 `PROFILE_LIST.txt`、`README.md`、`.env.example`、`.gitignore`、`references/sdlc-role-profiles.md`、`scripts/restore_to_hermes.sh`。
+- 所有 secret-like 字段已写为 `<REDACTED>`；未导出 `.env` 真实值、`auth.json`、sessions、logs、state DB、cache、venv。
+
+### 验证
+- `git diff --check` 通过。
+- YAML 解析校验通过：root + 8 个 profile config 均可解析。
+- 敏感信息扫描通过：未发现未脱敏的 api key/token/secret/password/private key 模式。
+
+### 风险与回滚
+- 风险：该仓库只包含脱敏配置，恢复后仍需手动配置 `.env` 和 auth 凭证。
+- 回滚：使用本 commit 前版本，或用 `scripts/restore_to_hermes.sh` 恢复时生成的 `$HERMES_HOME/backups/restore_*` 备份回退。
+
+### Commit
+- `chore: sync sanitized hermes local configs`

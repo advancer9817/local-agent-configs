@@ -1,11 +1,12 @@
-Profile          Model                        Gateway      Alias        Distribution
+
+ Profile          Model                        Gateway      Alias        Distribution
  ───────────────    ───────────────────────────    ───────────    ───────────    ────────────────────
- ◆default         gpt-5.5                      stopped      —            —
+ ◆default         claude-sonnet-4-6            stopped      —            —
   commitint       deepseek-v4-flash            stopped      —            —
-  coord           claude-sonnet-4-7-thinking   stopped      —            —
-  design          claude-sonnet-4-7-thinking   stopped      —            —
+  coord           claude-sonnet-4-6            stopped      —            —
+  design          claude-sonnet-4-6            stopped      —            —
   impl            gpt-5.5                      stopped      —            —
-  qa              claude-sonnet-4-7-thinking   stopped      —            —
+  qa              claude-sonnet-4-6            stopped      —            —
   req             deepseek-v4-flash            stopped      —            —
-  review          claude-sonnet-4-7-thinking   stopped      —            —
+  review          claude-sonnet-4-6            stopped      —            —
   security        claude-opus-4-7-thinking     stopped      —            —
