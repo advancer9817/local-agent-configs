@@ -99,3 +99,23 @@ M	profiles/security/memories/MEMORY.md
 
 ### Commit
 - `chore: sync sanitized hermes local configs`
+
+## 迭代 — 移除 openmemory MCP server 配置 (2026-05-20)
+
+### 目的
+清理已废弃的 openmemory MCP server 配置，与 lmmcp 架构对齐。
+
+### 变更摘要
+- `config.yaml`
+  - 删除 `mcp_servers.openmemory` 节（url: http://localhost:8765/mcp/claudecode/http/e-pengyang）
+  - openmemory 后端已在 lmmcp Phase 8.1 中移除，此处同步清理 Hermes 配置
+
+### 影响范围
+- Hermes 启动时不再尝试连接 openmemory MCP server
+- 不影响 local_memory MCP server（端口 8318）
+
+### 风险
+低。openmemory 服务本地未运行，删除后消除无效连接尝试。
+
+### 回滚
+`git revert HEAD`
