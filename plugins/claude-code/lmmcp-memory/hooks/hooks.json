@@ -1,0 +1,27 @@
+{
+  "description": "lmmcp-memory: 查询记忆注入上下文 + 回答后 ingest",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/query_memory.py",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/ingest_turn.py",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

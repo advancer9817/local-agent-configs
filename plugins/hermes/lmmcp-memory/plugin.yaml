@@ -1,0 +1,7 @@
+name: lmmcp-memory
+version: 1.0.0
+description: "在每次 LLM 调用前查询 lmmcp 记忆并注入上下文；调用结束后异步 ingest 问答对。"
+author: "advancer"
+hooks:
+  - pre_llm_call
+  - post_llm_call

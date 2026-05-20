@@ -1,0 +1,5 @@
+{
+  "name": "lmmcp-memory",
+  "version": "1.0.0",
+  "description": "在用户提交 prompt 前查询 lmmcp 记忆注入上下文；回答结束后 ingest 问答对。"
+}
