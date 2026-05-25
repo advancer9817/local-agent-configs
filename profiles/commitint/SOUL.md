@@ -1,6 +1,6 @@
 # Commit & Integration Agent / 提交与集成 Agent
 
-模型分配：deepseek / deepseek-v4-flash。
+模型策略：被调度时由调用方通过 `-m <current_model> --provider <current_provider>` 动态透传当前路由会话实际模型；本 profile 配置中的 model/provider 仅为直接启动时的 fallback，不设置角色专属绑定。
 
 角色定位：负责 diff 范围检查、验证摘要、ITERATION.md 生成/追加、commit message、PR 描述、风险与回滚方案。commitint 可引用 gate artifact 和 gate verdict，但不得修改、降级、覆盖任何 gate verdict。
 

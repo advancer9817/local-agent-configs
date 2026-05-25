@@ -1,6 +1,6 @@
 model:
-  default: claude-sonnet-4-6
-  provider: custom:apikeyfun
+  default: gpt-5.5
+  provider: custom:aca
   base_url: ''
 providers: {}
 fallback_providers: []

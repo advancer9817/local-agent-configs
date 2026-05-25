@@ -1,6 +1,6 @@
 model:
-  default: deepseek-v4-flash
-  provider: deepseek
+  default: gpt-5.5
+  provider: custom:aca
   base_url: ''
 providers: {}
 fallback_providers: []
@@ -8,7 +8,7 @@ credential_pool_strategies: {}
 toolsets:
 - hermes-cli
 agent:
-  max_turns: 50
+  max_turns: 12
   gateway_timeout: 1800
   restart_drain_timeout: 180
   api_max_retries: 6
@@ -328,7 +328,7 @@ delegation:
   orchestrator_enabled: true
   subagent_auto_approve: false
   memory_context:
-    enabled: true
+    enabled: false
     server: local_memory
     tool: memory_context
     scope: global

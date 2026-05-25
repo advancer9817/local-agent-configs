@@ -1,55 +1,41 @@
 # SDLC Role Profiles for Hermes Multi-Agent Workflows
 
-Use this when a user wants Hermes profiles to act as named software-development lifecycle agents with different models and role prompts.
+Use this when a user wants Hermes profiles to act as named software-development lifecycle agents while dynamically following the orchestrating session's actual wrapper model and retaining distinct role/tool contracts.
 
 ## Pattern
 
-Create one Hermes profile per durable role, then set each profile's `model.provider`, `model.default`, and `SOUL.md` role instructions.
+Create one Hermes profile per durable role, set `SOUL.md` role instructions and gate boundaries, and, whenever the router invokes a profile, pass the router session's actual `model` / `provider` on the invocation using `-m` and `--provider`. A profile's persisted `config.yaml` model is only its direct-launch fallback; Hermes profiles are independent `HERMES_HOME` directories and do not natively inherit the parent session's temporary `/model` selection. The model is not assigned per role; adapters and gates remain role-specific.
 
 Typical 8-role set:
 
-| Profile | Role | Model class |
+| Profile | Role | Role/tool contract |
 |---|---|---|
-| `coord` | Coordinator / delivery orchestration | strong planner, no thinking needed |
-| `req` | Requirement analysis | cheap/fast structured-output model |
-| `design` | Solution design | Hermes wrapper that delegates real analysis/design to Claude Code CLI |
-| `impl` | Implementation | Hermes/Codex wrapper: Codex CLI writes code, Claude Code CLI validates/tests |
-| `qa` | QA and test verification | Hermes wrapper that delegates real verification to Claude Code CLI |
-| `review` | Code review | Hermes wrapper that delegates real diff review to Claude Code CLI |
-| `security` | Security review | strongest security/reasoning model — do NOT downgrade |
-| `commitint` | Commit and integration | cheap/fast for summaries; escalate failures |
+| `coord` | Coordinator / delivery orchestration | orchestration, gates, freeze artifact |
+| `req` | Requirement analysis | structured requirements and acceptance criteria |
+| `design` | Solution design | Claude Code adapter for read-only design analysis when invoked |
+| `impl` | Implementation | Codex adapter writes code; verification adapter used by lane/gate contract |
+| `qa` | QA and test verification | Claude Code adapter for independent validation when gate runs |
+| `review` | Code review | Claude Code adapter for read-only diff review when gate runs |
+| `security` | Security review | hard security gate; insufficient evidence is BLOCKED/NEEDS_HUMAN_DECISION |
+| `commitint` | Commit and integration | iteration/commit/PR materials, never override gate verdicts |
 
-## Model Assignment (Proven Configuration)
+## Dynamic Invocation Model Policy
 
-Current production assignment, optimised for price / quality / latency balance:
+Current policy: when the router dispatches a durable profile, the invoked Hermes wrapper must run on the router session's actual current model/provider, rather than relying on a role-specific or stale profile model setting.
 
-| Profile | Provider | Model | Reasoning |
-|---|---|---|---|
-| `default` | `custom:apikeyfun` | `claude-sonnet-4-6` | Router + daily non-coding tasks; Sonnet quality without thinking overhead |
-| `coord` | `custom:apikeyfun` | `claude-sonnet-4-6` | Orchestration is mostly linear; thinking adds latency without benefit |
-| `req` | `deepseek` | `deepseek-v4-flash` | Pure text/structured output; fast and cheap, no code needed |
-| `design` | `custom:apikeyfun` | `claude-sonnet-4-6` | Hermes is dispatch layer only; Claude Code CLI does the real reasoning |
-| `impl` | `openai-codex` | `gpt-5.5` | Hard-wired to Codex CLI; cannot change |
-| `qa` | `custom:apikeyfun` | `claude-sonnet-4-6` | QA needs real analysis (failure root-cause, test strategy); Haiku is too shallow |
-| `review` | `custom:apikeyfun` | `claude-sonnet-4-6` | Hermes is dispatch layer; Claude Code CLI does the real review |
-| `security` | `custom:apikeyfun` | `claude-opus-4-7-thinking` | Highest-risk role; never downgrade |
-| `commitint` | `deepseek` | `deepseek-v4-flash` | Commit messages and PR text; fast and cheap is fine |
+| Profile | Wrapper model policy |
+|---|---|
+| `default` | Orchestrating session; its actual runtime model/provider is the dispatch source |
+| `coord`, `req`, `design`, `impl`, `qa`, `review`, `security`, `commitint` | Invoke with `-m <current_model> --provider <current_provider>`; persisted model is fallback only |
 
-### Decision Logic (for future re-evaluation)
+Hermes profiles are isolated `HERMES_HOME` directories. Their `config.yaml` files do not dynamically inherit root/default changes or an in-session `/model` switch. At the time of this policy update, the live default fallback is `custom:aca / gpt-5.5`, but dispatched roles must follow whatever actual model/provider is active in the orchestrating session at invocation time.
 
-**When to keep thinking models:** only when the Hermes profile itself must do deep multi-step reasoning with no external agent to delegate to. Currently only `security` qualifies.
+Important invariants:
 
-**When thinking is wasteful:** design / review / qa — these profiles are dispatch wrappers. The real reasoning happens inside Claude Code CLI. Paying for thinking tokens at the Hermes layer adds latency and cost with no quality gain.
-
-**When to use Haiku:** only for pure dispatch/routing with no analytical output. QA is NOT a pure dispatcher — it synthesises failure analysis and quality conclusions, so Sonnet is the floor.
-
-**When to use DeepSeek flash:** text-only tasks with no code reasoning: req (structured requirements), commitint (commit/PR text). Both are fast, cheap, and produce high-quality structured output.
-
-**security is a hard floor:** never downgrade security to a non-thinking model or a cheaper tier. It is the last line of defence before production changes.
-
-### reasoning_effort alignment
-
-When using non-thinking models (claude-sonnet-4-6), set `reasoning_effort: medium` in the profile config. The `high` setting is only meaningful for thinking-capable models and wastes tokens otherwise.
+- Unified wrapper models do not remove role boundaries, required gates, tool/write policies, or adapter contracts.
+- `design`, `qa`, and `review` continue using Claude Code adapter when their contracts require it; `impl` continues using Codex adapter for implementation.
+- `security` has no dedicated stronger wrapper model constraint under this policy. If the current default model or available evidence cannot support a reliable security PASS, security must return `BLOCKED` or `NEEDS_HUMAN_DECISION`.
+- Model unification must not be interpreted as permission to skip security review, frozen-diff validation, or independent review/QA.
 
 ## Commands
 
@@ -61,55 +47,38 @@ for p in coord req design impl qa review security commitint; do
 done
 ```
 
-Set model configuration by editing each profile's config:
+Initialize direct-launch fallback model configuration from the active default profile while preserving operational turn budgets:
 
 ```python
 from pathlib import Path
+import copy
 import yaml
 
-profiles = {
-    "coord":     ("custom:apikeyfun", "claude-sonnet-4-6",        "medium", 90),
-    "req":       ("deepseek",         "deepseek-v4-flash",         "medium", 50),
-    # design/review/qa are Hermes wrappers; their SOUL.md must call Claude Code CLI.
-    "design":    ("custom:apikeyfun", "claude-sonnet-4-6",         "medium", 80),
-    # impl is a Hermes wrapper; SOUL.md must call Codex CLI for dev, Claude Code CLI for validation.
-    "impl":      ("openai-codex",     "gpt-5.5",                   "medium", 80),
-    "qa":        ("custom:apikeyfun", "claude-sonnet-4-6",         "medium", 80),
-    "review":    ("custom:apikeyfun", "claude-sonnet-4-6",         "medium", 80),
-    "security":  ("custom:apikeyfun", "claude-opus-4-7-thinking",  "high",   60),
-    "commitint": ("deepseek",         "deepseek-v4-flash",         "medium", 50),
+base = Path.home() / ".hermes"
+default_model = yaml.safe_load((base / "config.yaml").read_text())["model"]
+turns = {
+    "coord": 35, "req": 12, "design": 30, "impl": 50,
+    "qa": 25, "review": 25, "security": 40, "commitint": 12,
 }
-
-base = Path.home() / ".hermes" / "profiles"
-for name, (provider, model, reasoning, max_turns) in profiles.items():
-    path = base / name / "config.yaml"
+for name, max_turns in turns.items():
+    path = base / "profiles" / name / "config.yaml"
     cfg = yaml.safe_load(path.read_text())
-    cfg.setdefault("model", {}).update({"provider": provider, "default": model, "base_url": ""})
-    cfg.setdefault("agent", {}).update({"max_turns": max_turns, "reasoning_effort": reasoning})
+    cfg["model"] = copy.deepcopy(default_model)
+    cfg.setdefault("agent", {})["max_turns"] = max_turns
     path.write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8")
 ```
 
-Write each role's `SOUL.md` with: role boundary, responsibilities, explicit constraints, fixed output fields, and escalation rules.
+Write each role's `SOUL.md` with: role boundary, responsibilities, explicit constraints, fixed output fields, escalation rules, and the statement that dispatched roles receive the invoking router session's actual model/provider through CLI override arguments rather than having role-specific model pinning.
 
-## Changing a single profile's model
+## Invoking roles with the current session model
 
-`hermes profile set-model` does not exist. Use `hermes config set` with `-p`:
+Profiles contain their own config files and do not dynamically inherit a router session's `/model` switch. For every routed role invocation, pass the invoking session's actual runtime model and provider explicitly:
 
 ```bash
-# There is no hermes profile set-model command.
-# Correct approach: edit the profile config.yaml directly.
-python3 -c "
-import yaml; from pathlib import Path
-p = Path.home() / '.hermes/profiles/coord/config.yaml'
-cfg = yaml.safe_load(p.read_text())
-cfg['model']['default'] = 'claude-sonnet-4-6'
-cfg['agent']['reasoning_effort'] = 'medium'
-p.write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False))
-print('done')
-"
+hermes -p <profile> chat -m <current_model> --provider <current_provider> -q "<handoff prompt>"
 ```
 
-Or use the `patch` file-editing tool to do a targeted string replacement in the profile's config.yaml.
+`<current_model>` and `<current_provider>` must be the values active in the calling router session, including any temporary session-level switch. A profile's saved `model` mapping is only a fallback for direct/manual profile launch. A persistent change to the default profile may be mirrored into fallback config for usability, but static config synchronization is not the dynamic dispatch mechanism.
 
 ## Verification
 
@@ -127,26 +96,38 @@ done
 ## Usage
 
 ```bash
-hermes -p coord
-hermes -p req chat -q "把这个需求整理成验收标准：..."
-hermes -p design chat -q "根据需求和代码结构设计技术方案：..."
-hermes -p impl chat -q "根据已批准方案实现：..."
-hermes -p review chat -q "审查当前 git diff：..."
+# Values below must be taken from the invoking router session's active runtime selection.
+CURRENT_MODEL="gpt-5.5"
+CURRENT_PROVIDER="custom:aca"
+hermes -p coord chat -m "$CURRENT_MODEL" --provider "$CURRENT_PROVIDER" -q "编排此任务：..."
+hermes -p req chat -m "$CURRENT_MODEL" --provider "$CURRENT_PROVIDER" -q "把这个需求整理成验收标准：..."
+hermes -p design chat -m "$CURRENT_MODEL" --provider "$CURRENT_PROVIDER" -q "根据需求和代码结构设计技术方案：..."
+hermes -p impl chat -m "$CURRENT_MODEL" --provider "$CURRENT_PROVIDER" -q "根据已批准方案实现：..."
+hermes -p review chat -m "$CURRENT_MODEL" --provider "$CURRENT_PROVIDER" -q "审查当前 git diff：..."
 ```
 
 Recommended iteration order:
 
-1. `coord` creates iteration context and decides whether security review is needed.
-2. `req` defines requirements, acceptance criteria, non-goals.
-3. `design` calls Claude Code CLI to analyze the codebase and write solution design, file-level plan, test strategy.
-4. `impl` calls Codex CLI to implement code and tests.
-5. `impl` or `qa` calls Claude Code CLI to validate the Codex-produced diff by running appropriate tests/lint/typecheck/build.
-6. If Claude Code validation fails, feed the failure report back to `impl`/Codex for fixes, then re-run Claude Code validation.
-7. `review` calls Claude Code CLI to review the final diff.
-8. `impl`/Codex fixes blockers.
-9. `review`/Claude Code re-reviews.
-10. `security` reviews if auth, data, files, dependencies, config, or external API risk exists.
-11. `commitint` checks diff scope, validation commands, commit/PR text.
-12. `coord` summarizes and gates submit/merge.
+### Latency-aware lanes
 
-Hard policy: design and review must delegate to Claude Code; implementation must use Codex for development and Claude Code for validation. Codex must not self-approve its own code.
+Use the shortest lane that preserves the required gates:
+
+- **Fast Lane (S0/S1):** default handles directly with necessary verification; do not spawn SDLC profiles by default.
+- **Standard Lane (clear S2 bugfix/local feature with no architecture, external/data/permission/config boundary):** `default brief -> impl/Codex + basic self-tests -> freeze -> qa/Claude and review/Claude in parallel -> commitint only when submission materials are requested`. Record reasons when `coord`, `req`, or `design` are skipped.
+- **Full Lane (S3/S4, or work touching architecture/external API/MCP/data/permissions/config/dependency/deployment/security triggers):** keep the complete coordinated pipeline below; never reduce required security review for latency.
+
+For Standard Lane only, Codex basic self-tests are implementation evidence, not approval; independent final Claude validation occurs once in `qa`, avoiding a duplicate full Claude validation inside `impl`. For Full Lane, `impl` may use Claude Code for a quick validation before final gates.
+
+1. `coord` creates iteration context and decides whether security review is needed for Full Lane or escalated work.
+2. `req` defines requirements, acceptance criteria, non-goals when the task is ambiguous, high-risk, or Full Lane.
+3. `design` calls Claude Code CLI to analyze the codebase and write solution design, file-level plan, test strategy when design is required.
+4. `impl` calls Codex CLI to implement code and tests.
+5. In Standard Lane, `impl` runs basic self-tests then hands off to `qa`; in Full Lane, `impl` may call Claude Code CLI for an early validation pass.
+6. If validation fails, feed the failure report back to `impl`/Codex for fixes, then re-run the applicable validation.
+7. After a frozen diff, `qa` and `review` call Claude Code against the same freeze artifact in parallel; `security` joins in parallel if required.
+8. `impl`/Codex fixes blockers and gates rerun against a new valid freeze artifact if the diff changes.
+9. `security` reviews if auth, data, files, dependencies, config, or external API risk exists.
+10. `commitint` checks diff scope, validation commands, commit/PR text only when commit/submission material is requested or required.
+11. `coord` summarizes and gates submit/merge for Full Lane or escalated work.
+
+Hard policy: design and review must delegate to Claude Code when those roles run; implementation must use Codex for development; Codex must not self-approve its own code. In Standard Lane, Claude final validation is centralized in QA; in Full Lane, Claude validation may also run inside impl as an early check.

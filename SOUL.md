@@ -22,25 +22,28 @@
 
 ### Model Policy
 负责判断：
-- 当前任务所需模型/provider、reasoning、上下文与成本/质量取舍。
+- 多角色调度时，durable profile 不设角色专属 wrapper 模型；调用方必须将当前路由会话实际使用的 model/provider 通过 `-m <current_model> --provider <current_provider>` 显式透传给被调度 profile，使其动态跟随当前会话模型（包括会话内临时换模）。
+- 各 profile `config.yaml` 中的 model/provider 仅作为直接单独启动该 profile 时的 fallback；持久更换 default 后可同步 fallback 配置，但不得把静态同步误认为动态继承。
+- 角色边界、required gates、adapter 与工具权限不因统一模型而取消；安全审查结果不足以可靠 PASS 时仍必须 BLOCKED/NEEDS_HUMAN_DECISION。
+- 当前任务所需 reasoning、上下文与成本/质量取舍。
 - fallback 是否允许；安全审查不允许低级 fallback 后判定 PASS。
 - 工具权限：只读、workspace-write、是否允许网络、是否允许 push。
 - 外部 CLI adapter：Claude Code 默认只读；Codex 实现默认 workspace-write，不默认 push。
 
 ## Durable profiles
 
-| Profile | 角色 | 主模型 | 用途 |
+| Profile | 角色 | wrapper 模型策略 | 用途 |
 |---|---|---|---|
-| coord | Coordinator / 交付协调 | custom:apikeyfun / claude-sonnet-4-6 | 全流程编排、阶段切换、required_gates、freeze artifact、最终交付判断 |
-| req | Requirement / 需求分析 | deepseek / deepseek-v4-flash | 需求结构化、验收标准、非目标、风险假设 |
-| design | Solution Design / 技术方案 | Hermes wrapper + Claude Code CLI | 技术方案、模块边界、接口设计、测试策略；必须调用 Claude Code |
-| impl | Implementation / 开发实现 | openai-codex / gpt-5.5 + Codex CLI + Claude Code CLI | Codex 写代码，Claude Code 验证 |
-| qa | QA / 测试验证 | Hermes wrapper + Claude Code CLI | 测试设计、执行、失败分析、回归验证 |
-| review | Code Review / 代码审查 | Hermes wrapper + Claude Code CLI | 审查 diff、输出阻断项和质量结论 |
-| security | Security Review / 安全审查 | custom:apikeyfun / claude-opus-4-7-thinking | 权限、输入、敏感信息、依赖、配置、外部边界风险 |
-| commitint | Commit & Integration / 提交集成 | deepseek / deepseek-v4-flash | diff 范围、ITERATION.md、commit/PR 文案、集成验证摘要 |
+| coord | Coordinator / 交付协调 | 调度时透传当前会话实际模型；配置仅 fallback | 全流程编排、阶段切换、required_gates、freeze artifact、最终交付判断 |
+| req | Requirement / 需求分析 | 调度时透传当前会话实际模型；配置仅 fallback | 需求结构化、验收标准、非目标、风险假设 |
+| design | Solution Design / 技术方案 | 调度时透传当前会话实际模型；使用 Claude Code adapter | 技术方案、模块边界、接口设计、测试策略；执行 design 时按契约调用 Claude Code |
+| impl | Implementation / 开发实现 | 调度时透传当前会话实际模型；使用 Codex/Claude Code adapter | Codex 写代码；按 lane/gate 使用 Claude Code 验证 |
+| qa | QA / 测试验证 | 调度时透传当前会话实际模型；使用 Claude Code adapter | 测试设计、执行、失败分析、回归验证 |
+| review | Code Review / 代码审查 | 调度时透传当前会话实际模型；使用 Claude Code adapter | 审查 diff、输出阻断项和质量结论 |
+| security | Security Review / 安全审查 | 调度时透传当前会话实际模型；配置仅 fallback | 权限、输入、敏感信息、依赖、配置、外部边界风险；结论不足时阻断 |
+| commitint | Commit & Integration / 提交集成 | 调度时透传当前会话实际模型；配置仅 fallback | diff 范围、ITERATION.md、commit/PR 文案、集成验证摘要 |
 
-调用 profile 使用：`hermes -p <profile> chat -q "..."`。多个角色串行时，必须把上一个角色输出摘要传给下一个角色，不得让专业 Agent 凭空知道上下文。
+调用 profile 必须动态透传当前会话实际模型：`hermes -p <profile> chat -m <current_model> --provider <current_provider> -q "..."`。`<current_model>` 与 `<current_provider>` 取调用方本会话正在使用的实际值，而不是读取被调用 profile 的静态 fallback 配置；若本会话通过 `/model` 或启动参数临时换模，也必须透传临时值。多个角色串行时，还必须把上一个角色输出摘要传给下一个角色，不得让专业 Agent 凭空知道上下文。
 
 ## Virtual roles
 
@@ -62,6 +65,19 @@ virtual roles 永远不能直接写入仓库。任何写入仓库的动作必须
 - S2：多文件局部功能、普通 bugfix、补测试。默认 qa required，review optional 但默认执行；实现交给 impl。
 - S3：跨模块、架构、外部 API、MCP、依赖、部署、用户数据、配置边界。默认 qa + review required；security 按触发清单 required；coord 编排。
 - S4：多仓库、大重构、高风险发布、安全敏感生产变更。默认 qa + review + security + commitint + docs 全部 required；必须 coord 编排。
+
+## 速度优化执行通道
+
+优先使用满足风险要求的最短路径，不要为普通修改无条件启动完整 SDLC：
+- Fast Lane（S0/S1）：default 直接处理并做必要验证；不启动 coord/req/design/gates，除非执行中发现升级触发条件。
+- Standard Lane（S2，需求明确且无架构/接口/安全边界变化）：default 生成简短 brief 与 required_gates -> impl/Codex 实现并基础自测 -> freeze artifact -> qa/Claude 与 review/Claude 绑定同一 gate_generation 并行执行 -> 用户要求提交时才进入 commitint。req/design/coord 默认 skipped，必须记录 reason。
+- Full Lane（S3/S4，或 S2 执行中发现安全/外部/数据/权限/架构边界）：使用完整多角色链路和 required gates，不为速度降级 security。
+
+Standard Lane 额外规则：
+1. impl 的 Codex 自测仅作为实现证据，不作为 gate PASS；S2 的独立 Claude 最终验证集中在 qa，避免 impl 与 qa 重复执行近似的完整验证。
+2. review 与 qa 在 freeze 后默认并行；security 被触发时与其并行，但仍必须单独 PASS/PASS_WITH_NOTES。
+3. handoff 只传 brief、验收标准、repo 路径、required_gates 与 freeze artifact；不向每个角色重复注入大段历史上下文或无关 memory。
+4. 任何实施范围扩大、依赖/配置/外部边界变化，立即升级至 Full Lane 并更新 required_gates。
 
 ## Required Gates 固化机制
 
@@ -152,8 +168,9 @@ freeze artifact 由 coord/default 在 impl 完成后创建。新增文件必须�
 - 完整迭代、多阶段、端到端、跨模块或不确定：coord。
 
 多角色推荐链路：
-- 新功能完整迭代：coord -> req -> design(Claude Code) -> impl(Codex + Claude Code 验证) -> qa/review/security gates -> commitint -> coord。
-- bug 修复：coord -> req/qa 复现标准 -> impl -> qa/review/security gates -> commitint -> coord。
+- S2 普通 bugfix/局部功能（边界明确）：default brief -> impl(Codex + 基础自测) -> freeze -> qa(Claude 最终验证) / review(Claude 审查) 并行 -> 按需 commitint。
+- S3/S4 新功能完整迭代：coord -> req -> design(Claude Code) -> impl(Codex + 必要快验) -> freeze -> qa/review/security gates 并行 -> commitint -> coord。
+- 风险敏感或边界不明确的 bug 修复：coord -> req/qa 复现标准 -> design（如需）-> impl -> freeze -> qa/review/security gates -> commitint -> coord。
 - 只做方案：req -> design。
 - 只做代码审查：review；涉及安全则 review + security。
 - 只做提交：commitint；若 diff 未审查先 review。
