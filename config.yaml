@@ -428,11 +428,6 @@ command_allowlist:
 - shell command via -c/-lc flag
 - delete in root path
 quick_commands: {}
-hooks:
-  on_session_end:
-  - command: python3 /home/advancer/.hermes/agent-hooks/lmmcp-session-end.py
-    timeout: 120
-hooks_auto_accept: false
 personalities: {}
 security:
   allow_private_urls: false
@@ -567,12 +562,11 @@ custom_providers:
   api_mode: anthropic_messages
   model: gpt-5.5
 mcp_servers:
-  local_memory:
+  memorycore:
     enabled: true
-    type: http
-    url: http://127.0.0.1:8318/mcp
     timeout: 120
     connect_timeout: 60
+    url: http://127.0.0.1:8318/mcp
 platforms:
   api_server:
     extra:
@@ -581,3 +575,7 @@ platforms:
     enabled: true
     key: ''
     cors_origins: '*'
+plugins:
+  enabled:
+  - mcore-memory
+  disabled: []
