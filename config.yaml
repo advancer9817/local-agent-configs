@@ -567,6 +567,8 @@ mcp_servers:
     timeout: 120
     connect_timeout: 60
     url: http://127.0.0.1:8318/mcp
+    headers:
+      X-Agent-Id: hermes
 platforms:
   api_server:
     extra:

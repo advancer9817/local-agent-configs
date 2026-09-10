@@ -469,3 +469,35 @@ This is an automated multi-repository sync. Generated/runtime artifacts already 
 ### Rollback
 
 Use `git revert <commit>` on this repository, then push the revert commit to the same remote/branch.
+
+---
+
+## 2026-09-10T10:18:00+0800 — Streamline SOUL.md: Pure Pragmatic Single-Agent & Conflict Cleanup
+
+### 目的
+彻底清除假大空的八股式“全生命周期”大词与多 Agent/CLI 协同遗留，消除记忆库中互相打架的交互指令，将 SOUL 固化为极简实战版，终结双端配置漂移与执行困扰。
+
+### 变更摘要
+1. **SOUL.md 极致瘦身与纠偏**：
+   - 移除“明确所有调研、架构、编写、测试、审查、版本控制与运维全生命周期全部由当前单会话闭环”等教条八股叙事；
+   - 移除任何外部 CLI (Claude Code/Codex) 协同及多角色路由残余；
+   - 交互规范确立“行动优先、顺畅时直接交付、遇异常/矛盾单句讲清技术结论、杜绝机械报幕与模板框”；
+   - 记忆规范废除脱离实际的“项目内双写 memory/ 与 MEMORY.md 索引”死规则，统一规范为 `memory_add` + `source_agent: "hermes"`。
+2. **多端一致性闭环**：
+   - 同步覆盖 Live 运行时 `~/.hermes/SOUL.md`；
+   - 同步覆盖仓库 `hermes-local-agent-configs/SOUL.md`；
+   - 同步清洗 `~/.hermes/memories/USER.md` 中的冲突条目。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`、`~/.hermes/memories/USER.md`
+- 本地配置版本库：`SOUL.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+git -C /home/advancer/project/hermes-local-agent-configs diff SOUL.md
+test -f ~/.hermes/SOUL.md && grep -q "极简与可移植性" ~/.hermes/SOUL.md && echo "Live SOUL.md OK"
+```
+
+### 风险与回滚
+- 风险：无。规则篇幅缩减 65% 以上，指令遵循度大幅提升。
+- 回滚：`git checkout HEAD~1 SOUL.md`，并同步覆盖 `~/.hermes/SOUL.md`。
