@@ -533,3 +533,32 @@ grep -q "意图表达公式" ~/.hermes/SOUL.md && echo "Live SOUL.md OK"
 ### 风险与回滚
 - 风险：无。
 - 回滚：`git checkout HEAD~1 SOUL.md`，并同步覆盖 `~/.hermes/SOUL.md`。
+
+---
+
+## 2026-09-10T14:35:00+0800 — Sync Live Memories & Push Configuration Updates
+
+### 目的
+同步本地 Live 运行时的最新记忆画像（`USER.md`）与通用事实（`MEMORY.md`）至配置受控仓库，并全量提交推送到远程配置同步仓库 `origin main`。
+
+### 变更摘要
+1. **记忆文件同步**：
+   - `memories/USER.md`：同步最新单 Agent 交互铁律与交付路径；
+   - `memories/MEMORY.md`：同步最新环境状态、跳板机安全配置与模型接入备忘。
+2. **远程推送**：
+   - 包含此前已提交的 SOUL.md 极简重塑（commit 166c5c1）、单句技术意图公式固化（commit 14200dc）以及本轮记忆文件同步提交；
+   - 推送至 `origin/main`。
+
+### 影响范围
+- 本地配置版本库：`memories/USER.md`、`memories/MEMORY.md`、`ITERATION.md`
+- 远程仓库：`advancer9817-crypto/hermes-local-agent-configs:main`
+
+### 验证命令
+```bash
+git -C /home/advancer/project/hermes-local-agent-configs log origin/main..HEAD
+git -C /home/advancer/project/hermes-local-agent-configs status
+```
+
+### 风险与回滚
+- 风险：无。已完成脱敏检查，不含敏感 Token 或运行时数据库。
+- 回滚：`git revert <commit>` 或 `git reset --hard origin/main`。
