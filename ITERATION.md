@@ -501,3 +501,35 @@ test -f ~/.hermes/SOUL.md && grep -q "极简与可移植性" ~/.hermes/SOUL.md &
 ### 风险与回滚
 - 风险：无。规则篇幅缩减 65% 以上，指令遵循度大幅提升。
 - 回滚：`git checkout HEAD~1 SOUL.md`，并同步覆盖 `~/.hermes/SOUL.md`。
+
+---
+
+## 2026-09-10T14:20:00+0800 — Align Interaction Formula: Single-Sentence Technical Intent Standard
+
+### 目的
+对齐远程沙箱验证成熟的交互表达规范，引入“单句高信息密度技术意图公式（动词短语 + 精确标的 + 技术目的）”，彻底解决本地 Agent 在“机械报幕”与“连续静默黑盒”之间反复横跳的顽疾。
+
+### 变更摘要
+1. **SOUL.md 交互条款精准固化**：
+   - 确立正向语法公式：【动词短语】+【精确操作标的】+【技术目的/预期解决的矛盾】；
+   - 确立正向示范：“检查编译环境与 Maven 构建链路，为修复后端健康检查路由 /api/v1/health 做准备。”；
+   - 严禁连续发送空 `content: ""` 发起工具调用导致黑盒；
+   - 坚决杜绝“步骤X/假设/推演事实”等假大空模板框与纯动作流水账。
+2. **多端同步与记忆对齐**：
+   - 同步覆盖 Live 运行时 `~/.hermes/SOUL.md`；
+   - 同步覆盖仓库 `hermes-local-agent-configs/SOUL.md`；
+   - 同步更新 `~/.hermes/memories/USER.md` 中的交互规则。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`、`~/.hermes/memories/USER.md`
+- 本地配置版本库：`SOUL.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+git -C /home/advancer/project/hermes-local-agent-configs diff SOUL.md
+grep -q "意图表达公式" ~/.hermes/SOUL.md && echo "Live SOUL.md OK"
+```
+
+### 风险与回滚
+- 风险：无。
+- 回滚：`git checkout HEAD~1 SOUL.md`，并同步覆盖 `~/.hermes/SOUL.md`。
