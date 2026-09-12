@@ -724,3 +724,23 @@ grep -n "personality" ~/.hermes/config.yaml
 ### 风险与回滚
 - 风险：失去 catgirl 人格（与用户既定"严禁可爱风/猫娘腔"一致，符合预期）。
 - 回滚：`cp ~/.hermes/config.yaml.bak-personality-20260912_164404 ~/.hermes/config.yaml`；SOUL 回滚 `cp ~/.hermes/SOUL.md.bak-trigger-20260912_164620 ~/.hermes/SOUL.md`。
+
+---
+
+## 2026-09-12T16:56:00+0800 — Decision: Do Not Deploy Hook-Based Progress Gate
+
+### 目的
+记录用户对"硬闸门"方案的决定，避免后续会话重复提案。
+
+### 决定
+- **不部署** `pre_llm_call` 提醒钩子 / `pre_tool_call` 阻断钩子。
+- 接受的下限：**每次工具调用附带一句文字**（当前模型栈下已稳定达成），不追求强制性的阶段性叙事。
+- 需要细节时由用户主动追问，不引入每轮执行的脚本与 `shell-hooks-allowlist.json` 授权。
+
+### 当前生效状态
+- SOUL.md 第 2 节为白话版（含"别只贴一句动作标签"），需 `/new` 生效。
+- `display.personality: ''`（已清除 catgirl 覆写）。
+- 无任何 shell hook 注册；`hooks_auto_accept: false` 保持不变。
+
+### 复查触发条件
+若用户再次反馈"长时间无有效反馈"，先确认是否已 `/new`（SOUL 按会话缓存）；仍不满足再考虑 hook 方案。
