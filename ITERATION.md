@@ -688,3 +688,39 @@ diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
 - 风险：约束力度下降，弱模型可能回到"闷头连跑"的状态；若再出现，可加回少量具体条款而非整段框架。
 - 回滚：`cp ~/.hermes/SOUL.md.bak-plain-20260912_164143 ~/.hermes/SOUL.md`。
 - 生效方式：需 `/new` 或重启后端进程。
+
+---
+
+## 2026-09-12T16:50:00+0800 — Verify SOUL Rule Effectiveness; Neutralize Personality Override
+
+### 目的
+验证重写后的交互规范是否真正生效，定位"模型长时间无有效反馈"的真实成因。
+
+### 核查结论（实测，非推断）
+1. **注入成功**：用 `agent.system_prompt.build_system_prompt` 实机构建提示词，第 2 节全文位于 stable 段（3783→3922 字符），`说人话` 命中索引 413。
+2. **存在覆盖冲突（已修）**：`display.personality: catgirl` 的人格文本经 `agent/conversation_loop.py:1048`（`sp + "\n\n" + ephemeral_system_prompt`）拼接在系统提示词**之后**，实测 Neko 文本位于末尾（索引 3932）。后置指令压过后置冲突 → 第 2.1 条"不要猫娘腔"被抵消。已 `hermes config set display.personality ''` 清空，复验 Neko 索引 = -1。
+3. **生效时机**：SOUL.md 在 `agent._cached_system_prompt` 中按会话缓存（`load_soul_md` 无缓存但仅构建时读取）→ 改 SOUL 必须 `/new`；config.yaml 按文件签名缓存（`load_config`）→ 改 config 下一轮生效。
+4. **行为层验证（A/B 实测，默认 CLI 模型）**：
+   - 同一多步任务，规范改前：5 次工具调用 / 5 条动作标签（16-41 字符），无阶段说明；
+   - 规范加"每三四步/阶段完成时说两三句"后：3 次工具调用 / 3 条动作标签（16-40 字符），仍无阶段说明 → **措辞级微调不改变行为**；
+   - 换 `claude-sonnet-4-6`（CPA）同一任务：2 次工具调用均为 `content: ""`，完全静默，比 flash 模型更差。
+   - 结论：提示词只能保证"有文字"，无法保证"有内容"；`tool_loop_guardrails` 无"沉默闸门"。
+5. **可控硬闸门（未部署）**：`pre_llm_call` shell hook 每轮执行且经 `agent/turn_context.py::_collect_pre_llm_call_context` 把 `{"context": ...}` 注入**用户消息**（非系统提示词），可据会话历史动态判定"连续 N 次工具调用无交代"并注入强制提醒。注册需 config `hooks:` 条目 + `shell-hooks-allowlist.json` 授权（`hooks_auto_accept` 当前 false）。
+
+### 变更摘要
+- `display.personality`：`catgirl` → `''`（清除与 SOUL 2.1 冲突的人格覆写）。
+- SOUL.md 第 3 条补入可判定触发条件与"别只贴一句动作标签"。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`（备份 `SOUL.md.bak-trigger-20260912_164620`）、`~/.hermes/config.yaml`（备份 `config.yaml.bak-personality-20260912_164404`）
+- 本地配置版本库：`SOUL.md`、`config.yaml`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep -n "personality" ~/.hermes/config.yaml
+/home/advancer/.hermes/hermes-agent/venv/bin/python /tmp/probe_eff.py
+```
+
+### 风险与回滚
+- 风险：失去 catgirl 人格（与用户既定"严禁可爱风/猫娘腔"一致，符合预期）。
+- 回滚：`cp ~/.hermes/config.yaml.bak-personality-20260912_164404 ~/.hermes/config.yaml`；SOUL 回滚 `cp ~/.hermes/SOUL.md.bak-trigger-20260912_164620 ~/.hermes/SOUL.md`。
