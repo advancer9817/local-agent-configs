@@ -1,12 +1,5 @@
 
  Profile          Model                        Gateway      Alias        Distribution
  ───────────────    ───────────────────────────    ───────────    ───────────    ────────────────────
- ◆default         claude-sonnet-4-6            stopped      —            —
-  commitint       deepseek-v4-flash            stopped      —            —
-  coord           claude-sonnet-4-6            stopped      —            —
-  design          claude-sonnet-4-6            stopped      —            —
-  impl            gpt-5.5                      stopped      —            —
-  qa              claude-sonnet-4-6            stopped      —            —
-  req             deepseek-v4-flash            stopped      —            —
-  review          claude-sonnet-4-6            stopped      —            —
-  security        claude-opus-4-7-thinking     stopped      —            —
+ ◆default         gemini-3.8-flash             stopped      —            —
+

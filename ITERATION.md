@@ -855,3 +855,30 @@ git -C /home/advancer/project/hermes-local-agent-configs log -1
 ### 风险与回滚
 - 风险：无。已完成全量正则脱敏扫描。
 - 回滚：`git push origin +<commit>^:main`（受控严格禁止，除非特别授权）。
+
+---
+
+## 2026-09-12T18:00:00+0800 — Remove All SDLC Profiles and Consolidate on Single Default Profile
+
+### 目的
+响应用户明确指示（“角色全都不要了，只留defult”），全面下线所有 SDLC 角色 profiles（commitint, coord, design, impl, qa, req, review, security），收敛并统一为单一 default profile 全流程自主运作。
+
+### 变更摘要
+1. **删除本地全部角色 Profiles**：通过 `hermes profile delete -y <profile>` 逐一原子清理 commitint, coord, design, impl, qa, req, review, security，本地仅保留 `◆default`；
+2. **清理配置仓库 profiles 资产**：彻底移除 `profiles/` 目录下的全部角色配置与提示词文件（共清理 32 个历史角色文件）；
+3. **刷新清单索引**：重新生成 `PROFILE_LIST.txt`，仅呈现单一活跃 default profile。
+
+### 影响范围
+- 本地运行时：`~/.hermes/profiles/`（全部多角色目录已删除并归档至安全回收站）
+- 配置版本库：`PROFILE_LIST.txt`、`profiles/` 目录移除、`ITERATION.md`
+
+### 验证命令
+```bash
+hermes profile list
+ls -la ~/.hermes/profiles
+git -C /root/project/hermes-local-agent-configs status
+```
+
+### 风险与回滚
+- 风险：无。所有会话与日常交互已在 default 下原生执行，无需角色跳转。
+- 回滚：本地有 `/root/.hermes/backups/restore_20260912_095606/profiles/` 完整快照，或通过 Git commit 回退恢复。
