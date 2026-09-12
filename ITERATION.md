@@ -627,3 +627,37 @@ diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
 - 风险：检查点提频会略增输出 token 与回复长度；已用"自然语言连贯表述、禁止模板框"约束避免机械报幕。
 - 回滚：`cp ~/.hermes/SOUL.md.bak-progress-20260912_154628 ~/.hermes/SOUL.md`。
 - 生效方式：SOUL.md 于会话启动时构建进系统提示词，需 `/new` 或重启桌面端后端生效。
+
+---
+
+## 2026-09-12T15:51:00+0800 — Externalize Long-Task Progress via Mandatory todo Usage
+
+### 目的
+在"阶段性汇报协议"基础上补齐硬抓手：把阶段目标与当前状态外化为 todo 任务项，使进度成为用户可直接观察的状态，而不是仅存在于模型文字里的自述。
+
+### 变更摘要
+1. **前置核实**：`hermes tools list` 确认 `todo` toolset 已全局启用（Task Planning）；`todo_list` 支持 `merge=true` 增量更新、`parent` 嵌套、单一 `in_progress`。
+2. **SOUL.md 第 2.4 条新增"进度外化（todo 强制）"**：
+   - 3 步以上（或单步预计 >2 分钟）任务，首个工具调用**前**必须写入全量阶段清单；
+   - 每项必须是可验证的**产出**（做什么 + 判据），禁止"查看/读取/分析某文件"式动作项；
+   - 阶段切换即时 `merge=true` 更新，有且仅有一个 `in_progress`；失败项 `cancelled` 并补修正项；`completed` 仅标已验证项；
+   - 检查点文字进度必须与 todo 状态一致，严禁虚标；无法依赖面板时检查点自带"阶段 N/M"。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`（备份 `SOUL.md.bak-todo-20260912_155013`）
+- 本地配置版本库：`SOUL.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep -n "进度外化" ~/.hermes/SOUL.md
+diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
+```
+
+### 验证结果
+- `todo_list` 实机调用通过：写入 5 项计划 → revision 1；`merge=true` 更新 2 项 → revision 2；状态与 summary（total 5 / pending 0 / in_progress 1 / completed 4）一致。
+- SOUL.md 与仓库副本 diff 退出码 0（完全一致）。
+
+### 风险与回滚
+- 风险：无。todo 为会话内状态，不落盘、不改变工具集。
+- 回滚：`cp ~/.hermes/SOUL.md.bak-todo-20260912_155013 ~/.hermes/SOUL.md`。
+- 生效方式：需 `/new` 或重启后端进程加载新系统提示词。
