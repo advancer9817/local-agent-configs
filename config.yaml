@@ -624,7 +624,7 @@ paste_collapse_threshold_fallback: 5
 paste_collapse_char_threshold: 2000
 _config_version: 40
 custom_providers:
-  - api_key: sk-048b1da7f4909d982fdf9119466c35aa50b2373480c265cdd1d759295a885786
+  - api_key: [REDACTED]
     api_mode: anthropic_messages
     base_url: https://api.apikey.fun
     models:
@@ -647,7 +647,7 @@ custom_providers:
         context_length: 1000000
         name: claude-sonnet-4-6-thinking
     name: apikeyfun
-  - api_key: sk-R60fMK9Nw3zOsLS9XybJpdB3XEkASKL1C6GGd8bOZEfPZD1PVWRZc4D8nuen7tTv
+  - api_key: [REDACTED]
     api_mode: chat_completions
     base_url: http://127.0.0.1:8317/v1
     model: gemini-3.8-flash
@@ -661,7 +661,7 @@ custom_providers:
       gemini-3.8-flash:
         name: gemini-3.8-flash
     name: cpa
-  - api_key: sk
+  - api_key: [REDACTED]
     api_mode: chat_completions
     base_url: http://35.236.134.50:8317/v1
     model: gemini-3.8-flash

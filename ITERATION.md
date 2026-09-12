@@ -830,3 +830,28 @@ git -C /home/advancer/project/hermes-local-agent-configs status
 ### 风险与回滚
 - 风险：无。
 - 回滚：`git checkout HEAD~1 -- SOUL.md memories/USER.md` 并回写 `~/.hermes/`。
+
+---
+
+## 2026-09-12T17:35:00+0800 — Sanitize config.yaml & Push Local Commits to Remote
+
+### 目的
+在执行用户授权的远程推送前，严格执行受控企业环境安全红线，对配置仓库中的 `config.yaml` 进行彻底脱敏（凭据统一替换为 `[REDACTED]`），随后推送全部提交至远程仓库。
+
+### 变更摘要
+1. **凭据彻底脱敏**：将 `config.yaml` 中 `custom_providers` 的 `api_key` 字段全面替换为 `[REDACTED]`，确保零敏感信息上云。
+2. **推送执行**：经用户明确授权，将本地 accumulated 提交（含语音输入 CPU 修复、SOUL/USER 沟通规范重构、猫娘人设恢复、去报幕协议等）推送到远程分支 `origin/main`。
+
+### 影响范围
+- 本地配置版本库：`config.yaml`、`ITERATION.md`
+- 远程仓库：`origin/main`
+
+### 验证命令
+```bash
+git -C /home/advancer/project/hermes-local-agent-configs status
+git -C /home/advancer/project/hermes-local-agent-configs log -1
+```
+
+### 风险与回滚
+- 风险：无。已完成全量正则脱敏扫描。
+- 回滚：`git push origin +<commit>^:main`（受控严格禁止，除非特别授权）。
