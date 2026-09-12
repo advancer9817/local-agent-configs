@@ -661,3 +661,30 @@ diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
 - 风险：无。todo 为会话内状态，不落盘、不改变工具集。
 - 回滚：`cp ~/.hermes/SOUL.md.bak-todo-20260912_155013 ~/.hermes/SOUL.md`。
 - 生效方式：需 `/new` 或重启后端进程加载新系统提示词。
+
+---
+
+## 2026-09-12T16:42:00+0800 — Simplify Interaction Rules into Plain Language
+
+### 目的
+前两轮新增的"阶段性汇报协议/进度外化"写得过于制度化（①②③④要素、成串"必须/严禁"），用户反馈过于格式化。改为口语化、原则性的短条款，保留约束力但去掉模板感。
+
+### 变更摘要
+- 重写 `## 2. 交互与沟通规范`：由 4 组带格式公式与要素编号的条目，压缩为 5 条白话。
+- 保留的实质约束：全中文说人话、动手前一句话交代意图（且禁止无信息量报幕）、长任务边做边说（含卡住/走错路立刻讲）、复杂任务可选 todo 列清单、未完成如实说、终端命令单步原子。
+- 去掉的内容：`【动词短语】+【标的】+【目的】`公式、"检查点四要素 ①②③④"、"todo 强制/严禁静默连发"等硬性编号条款。
+- 文件体积：6742 → 3580 字节。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`（备份 `SOUL.md.bak-plain-20260912_164143`）
+- 本地配置版本库：`SOUL.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
+```
+
+### 风险与回滚
+- 风险：约束力度下降，弱模型可能回到"闷头连跑"的状态；若再出现，可加回少量具体条款而非整段框架。
+- 回滚：`cp ~/.hermes/SOUL.md.bak-plain-20260912_164143 ~/.hermes/SOUL.md`。
+- 生效方式：需 `/new` 或重启后端进程。
