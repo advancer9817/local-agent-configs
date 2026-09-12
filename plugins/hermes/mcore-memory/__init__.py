@@ -101,7 +101,7 @@ def _mcp_session() -> str:
         return resp.headers.get("Mcp-Session-Id", "")
 
 
-def _mcp_call(session_id: str, tool: str, args: dict) -> dict:
+def _mcp_call(session_id: str, tool: str, args: dict, timeout: float = TIMEOUT) -> dict:
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
@@ -118,11 +118,18 @@ def _mcp_call(session_id: str, tool: str, args: dict) -> dict:
         headers=headers,
         method="POST"
     )
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         body = resp.read().decode()
+        raw = body.strip()
         for line in body.splitlines():
             if line.startswith("data:"):
-                return json.loads(line[5:].strip())
+                raw = line[5:].strip()
+                break
+        if raw:
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
     return {}
 
 
@@ -221,10 +228,10 @@ def _ingest_async(session_id: str, user_message: str, assistant_response: str) -
         project_path = _session_project_path(session_id)
         if project_path:
             ingest_args["project_path"] = project_path
-        result = _mcp_call(sid, "memory_ingest", ingest_args)
-        logger.debug("mcore-memory: ingest result %s", result)
+        result = _mcp_call(sid, "memory_ingest", ingest_args, timeout=60)
+        logger.info("mcore-memory: ingest result %s", result)
     except Exception as exc:
-        logger.debug("mcore-memory: ingest 失败 %s", exc)
+        logger.warning("mcore-memory: ingest 失败 %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -269,15 +276,20 @@ def _on_session_end(**kwargs: Any):
 
     post_llm_call 覆盖每轮问答；此 hook 捕获中断/压缩等未写回的轮次。
     """
-    if not MCORE_INGEST_SCRIPT.exists():
-        return
+    script_path = MCORE_INGEST_SCRIPT
+    if not script_path.exists():
+        fallback_script = Path("/workspace/memorycore/scripts/hooks/mcore-ingest.py")
+        if fallback_script.exists():
+            script_path = fallback_script
+        else:
+            return
     session_id: str = kwargs.get("session_id", "") or ""
     payload = {"session_id": session_id} if session_id else {}
 
     def _run() -> None:
         try:
             subprocess.run(
-                [sys.executable or "python3", str(MCORE_INGEST_SCRIPT), "--agent", AGENT_ID],
+                [sys.executable or "python3", str(script_path), "--agent", AGENT_ID],
                 input=json.dumps(payload).encode(),
                 capture_output=True,
                 timeout=120,
