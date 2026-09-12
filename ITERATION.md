@@ -798,3 +798,35 @@ git -C /home/advancer/project/hermes-local-agent-configs status
 ### 风险与回滚
 - 风险：无。
 - 回滚：`git checkout HEAD~1 -- SOUL.md memories/USER.md` 并回写 `~/.hermes/`。
+
+---
+
+## 2026-09-12T17:25:00+0800 — Refine Action Briefing (Drop Subject & "正在") + Mandate Detailed Long-Form Output on Critical Decisions
+
+### 目的
+精准对齐用户交互要求：
+1. 需要交代动作，但必须**去掉主语，严禁“我正在……”或“正在……”**，直接说明做什么与目的（如“检索 memorycore 历史提交，明确最新基线”）；
+2. 遇到重大决策（架构选型、核心排障发现、技术方案对比、需要用户拍板等关键节点）时，必须输出一段详实连贯的长文本深入剖析，讲透前因后果与影响。
+
+### 变更摘要
+1. **SOUL.md 第 2 节（交互与沟通规范）**：
+   - 规定**动作交代规范（去主语、禁止“正在/我正在”）**：交代要做的事情时去掉主语，严禁使用“正在……”或“我正在……”前缀，直接陈述动作与目的；
+   - 规定**重大决策长文本深度剖析**：重大架构选型、排障核心突破、方案取舍及决策节点，输出详实长文本完整阐明依据、逻辑与影响，严禁轻描淡写带过；
+   - 保持长任务阶段性交代与未完成如实说明。
+2. **USER.md (USER PROFILE 长期记忆)**：
+   - 同步更新为：`交互沟通: 默认全中文；交代动作去主语、严禁'正在/我正在'前缀，直述要做什么；重大决策/排障核心/方案取舍输出详实长文本深入剖析；命令单步原子化严禁&&或分号。程序层聚合计算，禁SQL堆复杂函数。`
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`、`~/.hermes/memories/USER.md`
+- 本地配置版本库：`SOUL.md`、`memories/USER.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep -n "正在" ~/.hermes/SOUL.md
+grep -n "正在" ~/.hermes/memories/USER.md
+git -C /home/advancer/project/hermes-local-agent-configs status
+```
+
+### 风险与回滚
+- 风险：无。
+- 回滚：`git checkout HEAD~1 -- SOUL.md memories/USER.md` 并回写 `~/.hermes/`。
