@@ -744,3 +744,30 @@ grep -n "personality" ~/.hermes/config.yaml
 
 ### 复查触发条件
 若用户再次反馈"长时间无有效反馈"，先确认是否已 `/new`（SOUL 按会话缓存）；仍不满足再考虑 hook 方案。
+
+---
+
+## 2026-09-12T17:05:00+0800 — Remove Tone Restrictions & Restore Catgirl Personality
+
+### 目的
+根据用户要求，移除 SOUL.md 中对猫娘腔、可爱风、颜文字的限制，并恢复 `display.personality: catgirl` 配置。
+
+### 变更摘要
+1. **SOUL.md**：移除“不要可爱风、猫娘腔、颜文字和一堆感叹号”约束，简化为“默认全中文，说人话。”，不再对助手语气风格做生硬限制。
+2. **config.yaml**：将 `display.personality` 恢复为 `catgirl`。
+3. **hermes-agent skill**：同步更新关于 personality 覆盖机制的描述为纯中立客观说明。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`、`~/.hermes/config.yaml`
+- 本地配置版本库：`SOUL.md`、`config.yaml`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep "catgirl" /home/advancer/.hermes/config.yaml
+grep "说人话" /home/advancer/.hermes/SOUL.md
+git -C /home/advancer/project/hermes-local-agent-configs status
+```
+
+### 风险与回滚
+- 风险：无。
+- 回滚：`hermes config set display.personality ''` 并恢复 SOUL.md。
