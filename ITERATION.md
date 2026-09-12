@@ -771,3 +771,30 @@ git -C /home/advancer/project/hermes-local-agent-configs status
 ### 风险与回滚
 - 风险：无。
 - 回滚：`hermes config set display.personality ''` 并恢复 SOUL.md。
+
+---
+
+## 2026-09-12T17:15:00+0800 — Eradicate Action-Narrating "正在xxx" Anti-Pattern & Clean USER.md
+
+### 目的
+彻底根除每次工具调用前机械输出“正在检索/正在读取/正在定位……”的报幕流水账，解决模型教条化机械输出导致体验恶化的问题。
+
+### 根因与修复
+1. **持久化记忆污染排查**：在 `USER.md`（USER PROFILE 记忆层）中发现了残留的 `关键工具调用前伴随输出单句技术意图(动词+标的+目的)`，导致无论系统提示词如何修改，每轮模型推理都会被强制注入该公式，引发模型教条式套用“正在[动词]+[标的]+[目的]”。
+2. **USER.md 清理重构**：使用 `memory` 工具将 USER PROFILE 中的该条目彻底重构，明确写入 `严禁在每次工具调用前机械报幕（如'正在xxx'流水账）；遇到卡点、需决策或有阶段结论时才交代`，同时移除对语气/猫娘的陈旧限制，精简整个 user profile 字符至预算内（93%）。
+3. **SOUL.md 第 2 节改写**：删除“动手前先一句话交代在做什么”，明确规定“工具调用直接执行，严禁每次调用前输出‘正在xxx’机械报幕；仅在长任务阶段性完成、卡住需要决策或出阶段结论时，才用自然简短的话交代进展”。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`、`~/.hermes/memories/USER.md`
+- 本地配置版本库：`SOUL.md`、`memories/USER.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep "正在xxx" ~/.hermes/SOUL.md
+grep "正在xxx" ~/.hermes/memories/USER.md
+git -C /home/advancer/project/hermes-local-agent-configs status
+```
+
+### 风险与回滚
+- 风险：无。
+- 回滚：`git checkout HEAD~1 -- SOUL.md memories/USER.md` 并回写 `~/.hermes/`。
