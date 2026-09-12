@@ -562,3 +562,68 @@ git -C /home/advancer/project/hermes-local-agent-configs status
 ### 风险与回滚
 - 风险：无。已完成脱敏检查，不含敏感 Token 或运行时数据库。
 - 回滚：`git revert <commit>` 或 `git reset --hard origin/main`。
+
+---
+
+## 2026-09-12T15:45:00+0800 — Fix Local Voice STT (Whisper Model Cache & CPU Inference) & Set Chinese Recognition
+
+### 目的
+修复 Hermes 语音输入转写失败问题（解决离线模型缺失引发的 `Network is unreachable` 以及 WSL 环境下调用 GPU 时触发的 `libcublas.so.12 is not found` 错误），并将全局及本地语音转写配置为中文识别。
+
+### 变更摘要
+1. **补全本地 Whisper 权重**：
+   - 部署 `faster-whisper-base` 与 `faster-whisper-tiny` 离线模型至 `~/.cache/huggingface/hub/`，阻断首次懒加载向外网拉取模型的超时与断网异常。
+2. **锁定 CPU/int8 推理设备**：
+   - WSL 环境缺少 NVIDIA CUDA 12 动态链接库（`libcublas.so.12`），WhisperModel 默认 `auto` 会误选 CUDA 并于分词生成时崩溃；
+   - 显式配置 `stt.local.device: cpu` 与 `stt.local.compute_type: int8`，避开 CUDA 动态库依赖。
+3. **设置中文识别**：
+   - 配置 `stt.language: zh` 与 `stt.local.language: zh`，确保语音转写默认为中文识别。
+4. **受控配置仓库同步**：
+   - 同步脱敏配置至 `hermes-local-agent-configs/config.yaml`。
+
+### 影响范围
+- Live 运行时：`~/.hermes/config.yaml`、`~/.cache/huggingface/hub/`
+- 本地配置版本库：`config.yaml`、`ITERATION.md`
+
+### 验证命令
+```bash
+/home/advancer/.hermes/hermes-agent/venv/bin/python -c 'from tools.voice_mode import transcribe_recording; print(transcribe_recording("/tmp/test.wav"))'
+```
+
+### 风险与回滚
+- 风险：纯 CPU 推理耗时稍长于高配 GPU，但兼容性与稳定性为 100%。
+- 回滚：`hermes config set stt.language en && hermes config set stt.local.device auto`。
+
+
+---
+
+## 2026-09-12T15:47:00+0800 — Add Mandatory Progress-Checkpoint Protocol to SOUL.md
+
+### 目的
+解决长任务执行期间"连续工具调用、无有效反馈"的黑盒体验：模型按步执行却长时间不交代主线任务、原因判断与阶段结果，用户无法判断其在做什么、为何这么做。
+
+### 变更摘要
+1. **根因定位**：
+   - 反馈通道本身是通的——桌面端后端走 `hermes serve`（platform=api_server），其 display 层属 `_TIER_HIGH`，`interim_assistant_messages=True`，中间文本可正常送达；
+   - 缺失的是内容约束：原 SOUL 仅有"单句技术意图"要求，无"主线锚定 + 阶段检查点 + 原因/结果交代"的强制协议；
+   - Hermes 无原生闸门：`tool_loop_guardrails` 只覆盖"重复失败/无进展"，不覆盖"静默连发"，故只能在提示词层强制。
+2. **SOUL.md 新增 `## 2.4 阶段性汇报协议 (Progress Checkpoint，长任务强制)`**：
+   - 主线锚定（首个工具调用前交代目标/阶段拆分/入手点及理由，压缩或续做后重新锚定）；
+   - 检查点触发条件（阶段完成、连续 3 次工具调用无文字、静默 >90s、同一问题排查 >2 轮）；
+   - 检查点四要素（主线进度 / 原因判断与证据、是否偏离预期 / 结果与影响 / 下一步及理由）；
+   - 结果优先于动作、异常即时上报、禁止连续 `content: ""` 静默连发、收尾复盘与未完成如实标注。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`（备份 `SOUL.md.bak-progress-20260912_154628`）
+- 本地配置版本库：`SOUL.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep -n "阶段性汇报协议" ~/.hermes/SOUL.md
+diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
+```
+
+### 风险与回滚
+- 风险：检查点提频会略增输出 token 与回复长度；已用"自然语言连贯表述、禁止模板框"约束避免机械报幕。
+- 回滚：`cp ~/.hermes/SOUL.md.bak-progress-20260912_154628 ~/.hermes/SOUL.md`。
+- 生效方式：SOUL.md 于会话启动时构建进系统提示词，需 `/new` 或重启桌面端后端生效。
