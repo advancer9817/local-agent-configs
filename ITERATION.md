@@ -562,3 +562,37 @@ git -C /home/advancer/project/hermes-local-agent-configs status
 ### 风险与回滚
 - 风险：无。已完成脱敏检查，不含敏感 Token 或运行时数据库。
 - 回滚：`git revert <commit>` 或 `git reset --hard origin/main`。
+
+---
+
+## 2026-09-14T09:30:00+0800 — Fix cc-switch Input Hang Under WSLg (WebKitGTK + IME)
+
+### 目的
+修复 cc-switch 在 WSLg 下「点击任意输入框无法聚焦/输入，且触发后整页控件全部失效，点返回按钮弹出官网」的故障，并把修复件与排查结论纳入受控配置仓库，避免重装或升级后再次踩坑。
+
+### 变更摘要
+1. **根因定位（非 cc-switch 缺陷）**：WebKitGTK 2.40+ 在 Linux 下，GTK 探测到已安装 fcitx5/ibus 的 IM 模块但对应守护进程未运行时，输入框进入 IME 组合态会挂死 `WebKitWebProcess`，导致其后所有 WebView 交互失效。本机 `libwebkit2gtk-4.1-0 = 2.52.6`，与上游 `farion1231/cc-switch` issue **#7059** 报告版本完全一致。
+2. **修复落点（两条启动路径全覆盖）**：
+   - 包装脚本 `~/.local/bin/cc-switch` 增加 IM 兼容块，设 `GTK_IM_MODULE=gtk-im-context-simple`、`QT_IM_MODULE=simple`、`XMODIFIERS=@im=none`；
+   - 新增用户级桌面项覆盖 `~/.local/share/applications/CC Switch.desktop` 与 `cc-switch-handler.desktop`，`Exec` 指向包装脚本 —— 因 `/etc/environment` 的 PATH 不含 `~/.local/bin`，开始菜单与 `ccswitch://` 深链接会绕过包装脚本直呼 `/usr/bin/cc-switch`。
+3. **新增修复件**：`scripts/cc-switch-wslg-fix/`（`cc-switch` 包装脚本、`install.sh` 幂等安装器含 `--check` 环境自检、`README.md`、`FIX-REPORT.md`）。
+
+### 影响范围
+- Live 运行时：`~/.local/bin/cc-switch`、`~/.local/share/applications/CC Switch.desktop`、`~/.local/share/applications/cc-switch-handler.desktop`
+- 本地配置版本库：`scripts/cc-switch-wslg-fix/`、`ITERATION.md`
+- **不触碰** `~/.cc-switch/` 配置库（providers 24 条前后一致，另有冷备份 `~/.cc-switch.bak-reinstall-20260911/`）
+
+### 验证命令
+```bash
+# 运行进程真实继承的环境变量（唯一可信验证）
+PID=$(pgrep -f "^/usr/bin/cc-switch" | head -1)
+tr '\0' '\n' < "/proc/${PID}/environ" | grep -E "^(GTK_IM_MODULE|QT_IM_MODULE|XMODIFIERS)="
+
+# 环境自检（不改动文件）
+scripts/cc-switch-wslg-fix/install.sh --check
+```
+
+### 风险与回滚
+- 风险：低。若将来真的安装并常驻运行 fcitx5/ibus，需在包装脚本中改为条件判断，否则会失去输入法支持。
+- 回滚：删除上述两个用户级 `.desktop` 与 `~/.local/bin/cc-switch`，三处改动互相独立可单独撤销。
+

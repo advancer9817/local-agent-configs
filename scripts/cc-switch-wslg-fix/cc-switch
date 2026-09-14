@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+# cc-switch wrapper: 提供 start/stop/restart/status/update 命令支持，并自动适配 WSLg 图形环境
+# Real binary: /usr/bin/cc-switch (installed via .deb from farion1231/cc-switch releases)
+set -euo pipefail
+
+REAL_BIN="/usr/bin/cc-switch"
+REPO="farion1231/cc-switch"
+ARCH="x86_64"          # amd64
+DEB_PATTERN="CC-Switch-*-Linux-x86_64.deb"
+
+# WSLg / Linux GUI 兼容环境变量 (解决 Wayland 下 GTK scale-factor 断言失败、尺寸漂移及 WebKitGTK DMA-BUF 渲染异常)
+export GDK_BACKEND="${GDK_BACKEND:-x11}"
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
+
+# 输入法兼容 (上游 issue #7059 / #349): WebKitGTK 2.40+ 在 Linux 下挂载输入框时,
+# 若 GTK 探测到 fcitx5/ibus 的 IM 模块而对应守护进程并未运行, WebKitWebProcess 会挂死
+# ——现象即"点击任意输入框后界面卡死/无法输入, 随后所有按钮失效"。
+# 强制退回 GTK 内置的简单输入上下文, 绕开 IME 组合态路径。
+export GTK_IM_MODULE="${GTK_IM_MODULE:-gtk-im-context-simple}"
+export QT_IM_MODULE="${QT_IM_MODULE:-simple}"
+export XMODIFIERS="${XMODIFIERS:-@im=none}"
+
+# DISPLAY 自动发现: 经 ssh / 非登录 shell 调用时 WSLg 的 DISPLAY 不会继承,
+# 缺失会让 GTK 初始化失败并以 "Failed to initialize GTK" 崩溃退出。
+# 这里探测已在运行的 X socket 补齐, 使 start/restart 在任何会话下都可用。
+if [ -z "${DISPLAY:-}" ]; then
+  for _n in 0 1; do
+    if [ -e "/tmp/.X11-unix/X${_n}" ]; then
+      export DISPLAY=":${_n}"
+      break
+    fi
+  done
+fi
+
+# --- helper: current installed version -------------------------------------
+current_version() {
+  dpkg-query -W -f='${Version}' cc-switch 2>/dev/null || echo "unknown"
+}
+
+# --- helper: latest version + download url from GitHub API -----------------
+latest_release() {
+  curl -fsSL --max-time 20 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null
+}
+
+# --- helper: running PIDs --------------------------------------------------
+get_pids() {
+  pgrep -f "^${REAL_BIN}" 2>/dev/null || true
+}
+
+# --- status ----------------------------------------------------------------
+cmd_status() {
+  local pids
+  pids="$(get_pids)"
+  if [ -n "$pids" ]; then
+    echo "cc-switch 正在运行中 (PID: ${pids})"
+    if ss -tlnp 2>/dev/null | grep -q "15721"; then
+      echo "本地代理端口 15721: 正在监听 [OK]"
+    else
+      echo "本地代理端口 15721: 未检测到监听"
+    fi
+    return 0
+  else
+    echo "cc-switch 未运行"
+    return 1
+  fi
+}
+
+# --- stop ------------------------------------------------------------------
+cmd_stop() {
+  local pids
+  pids="$(get_pids)"
+  if [ -z "$pids" ]; then
+    echo "cc-switch 未运行"
+    return 0
+  fi
+  echo "正在停止 cc-switch (PID: ${pids})..."
+  kill -15 $pids 2>/dev/null || true
+  for _ in {1..30}; do
+    if [ -z "$(get_pids)" ]; then
+      echo "cc-switch 已安全退出 [OK]"
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "正在强制终止残留进程..."
+  kill -9 $(get_pids) 2>/dev/null || true
+  echo "cc-switch 已停止 [OK]"
+}
+
+# --- start -----------------------------------------------------------------
+cmd_start() {
+  local pids
+  pids="$(get_pids)"
+  if [ -n "$pids" ]; then
+    echo "cc-switch 已在运行中 (PID: ${pids})"
+    cmd_status
+    return 0
+  fi
+
+  local log_dir="${HOME}/.cc-switch/logs"
+  mkdir -p "$log_dir"
+  local log_file="${log_dir}/cc-switch-gui.log"
+
+  echo "正在启动 cc-switch 桌面 UI (GDK_BACKEND=x11)..."
+  nohup "$REAL_BIN" > "$log_file" 2>&1 &
+  local new_pid=$!
+
+  local started=0
+  for _ in {1..25}; do
+    if kill -0 "$new_pid" 2>/dev/null; then
+      if ss -tlnp 2>/dev/null | grep -q "15721"; then
+        started=1
+        break
+      fi
+    else
+      break
+    fi
+    sleep 0.2
+  done
+
+  if [ "$started" -eq 1 ]; then
+    echo "cc-switch 启动成功 (PID: ${new_pid})，UI 界面与代理服务已就绪 (127.0.0.1:15721) [OK]"
+  else
+    if kill -0 "$new_pid" 2>/dev/null; then
+      echo "cc-switch 已启动 (PID: ${new_pid})，桌面 UI 正在加载..."
+    else
+      echo "错误: cc-switch 启动失败，请检查日志: ${log_file}"
+      return 1
+    fi
+  fi
+}
+
+# --- restart ---------------------------------------------------------------
+cmd_restart() {
+  cmd_stop
+  sleep 0.5
+  cmd_start
+}
+
+# --- update ----------------------------------------------------------------
+cmd_update() {
+  echo "正在检查 cc-switch 更新..."
+  local rel latest_tag deb_url
+  rel="$(latest_release)" || { echo "错误:无法访问 GitHub API(检查网络/代理)"; return 1; }
+
+  latest_tag="$(printf '%s' "$rel" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("tag_name",""))')"
+  [ -n "$latest_tag" ] || { echo "错误:无法解析最新版本"; return 1; }
+  latest_tag="${latest_tag#v}"   # strip leading v
+
+  local cur
+  cur="$(current_version)"
+  echo "当前版本: ${cur}  最新版本: ${latest_tag}"
+
+  if [ "$cur" = "$latest_tag" ]; then
+    echo "已是最新版本 ✅"
+    return 0
+  fi
+
+  deb_url="$(printf '%s' "$rel" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+for a in d.get('assets',[]):
+    n=a['name']
+    if n.endswith('.deb') and 'x86_64' in n:
+        print(a['browser_download_url']); break
+")"
+  [ -n "$deb_url" ] || { echo "错误:未找到 x86_64 deb 安装包"; return 1; }
+
+  local tmp="/tmp/cc-switch-update-$(date +%Y%m%d%H%M%S).deb"
+  echo "下载: $deb_url"
+  curl -fL --max-time 300 -o "$tmp" "$deb_url" || { echo "错误:下载失败"; rm -f "$tmp"; return 1; }
+  echo "下载完成 ($(du -h "$tmp" | cut -f1))"
+
+  echo "安装中(需要 sudo)..."
+  sudo dpkg -i "$tmp" || { echo "错误:安装失败"; rm -f "$tmp"; return 1; }
+  rm -f "$tmp"
+
+  local new
+  new="$(current_version)"
+  echo "更新完成: ${cur} → ${new} ✅"
+}
+
+# --- main ------------------------------------------------------------------
+case "${1:-}" in
+  start)
+    cmd_start
+    ;;
+  stop)
+    cmd_stop
+    ;;
+  restart)
+    cmd_restart
+    ;;
+  status)
+    cmd_status
+    ;;
+  update|upgrade|self-update)
+    cmd_update
+    ;;
+  -h|--help|help)
+    echo "用法: cc-switch <subcommand>"
+    echo "  start         后台启动 cc-switch 并唤起桌面 UI 界面"
+    echo "  stop          安全停止 cc-switch"
+    echo "  restart       重启 cc-switch 桌面端及服务"
+    echo "  status        查看运行状态与代理监听端口"
+    echo "  update        检查并更新 cc-switch 到最新版"
+    echo "  (无参数)      默认启动 cc-switch 并唤起桌面 UI"
+    ;;
+  "")
+    cmd_start
+    ;;
+  *)
+    exec "$REAL_BIN" "$@"
+    ;;
+esac
