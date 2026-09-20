@@ -596,3 +596,33 @@ scripts/cc-switch-wslg-fix/install.sh --check
 - 风险：低。若将来真的安装并常驻运行 fcitx5/ibus，需在包装脚本中改为条件判断，否则会失去输入法支持。
 - 回滚：删除上述两个用户级 `.desktop` 与 `~/.local/bin/cc-switch`，三处改动互相独立可单独撤销。
 
+---
+
+## 2026-09-20T13:50:00+0800 — Decouple Task State Machine from Chat Output (SOUL.md & todo_list)
+
+### 目的
+解决任务清单组件长期未被调用的问题：破除由于“禁止死板模板、杜绝步骤X”过度抑制任务状态机调用的阻碍，将“正文沟通”与“结构化状态机”解耦。
+
+### 变更摘要
+1. **SOUL.md 交互规范微调**：
+   - 保留“禁止正文格式化流水账（严禁在回复正文中输出步骤X/推演事实/假设等假大空格式框）”；
+   - 明确新增“任务状态机与原生看板解耦”：对于 ≥3 步的跨模块/重构/批量工程任务，首步必须调用 `todo_list` 挂载底层状态机（通过原生桌面看板展示，不在正文冗余复述），并随实际验证结果原子翻牌，作为执行防漂移锚点。
+2. **同步生效范围**：
+   - 运行时配置文件：`~/.hermes/SOUL.md`
+   - 配置仓库镜像：`project/hermes-local-agent-configs/SOUL.md`
+
+### 影响范围
+- `~/.hermes/SOUL.md`
+- `project/hermes-local-agent-configs/SOUL.md`
+- `project/hermes-local-agent-configs/ITERATION.md`
+
+### 验证命令
+```bash
+git -C /home/advancer/project/hermes-local-agent-configs diff SOUL.md
+```
+
+### 风险与回滚
+- 风险：无。仅澄清行为准则，不改变代码与外部接口。
+- 回滚：`git checkout SOUL.md` 并同步还原 `~/.hermes/SOUL.md`。
+
+
