@@ -945,6 +945,37 @@ bash /home/advancer/project/local-agent-configs/scripts/restore_to_codex.sh
 
 ---
 
+## 2026-09-22T17:35:00+0800 — Rename GitHub Remote Repository to local-agent-configs
+
+### 目的
+配合本地项目名与多 Agent 子目录自治架构的升级，将 GitHub 远端仓库从 `advancer9817/hermes-local-agent-configs` 同步重命名为 `advancer9817/local-agent-configs`，使远程与本地保持完全一致。
+
+### 变更摘要
+1. **GitHub 远程仓库重命名**：
+   - 使用 GitHub CLI 将远程仓库重命名为 `advancer9817/local-agent-configs`；
+   - 更新远程仓库描述为 `Sanitized local AI agent configurations (Claude Code, Hermes, Codex) and restore toolset`。
+2. **本地 Git Remote 更新**：
+   - 将 `origin` URL 更新为 `https://github.com/advancer9817/local-agent-configs.git`；
+   - 验证 `git fetch` 连通正常。
+
+### 影响范围
+- 远程仓库：`https://github.com/advancer9817/local-agent-configs.git`
+- 本地配置：`git remote origin`
+- 文档：`ITERATION.md`
+
+### 验证命令
+```bash
+git remote -v
+gh repo view advancer9817/local-agent-configs
+git fetch origin
+```
+
+### 风险与回滚
+- 风险：无。GitHub 会自动为旧仓库名建立重定向，原 clone 链接不会失效。
+- 回滚：`gh repo rename hermes-local-agent-configs --yes` 并还原 `git remote set-url`。
+
+---
+
 ## 2026-09-22T16:55:00+0800 — Expand Config Repo to Multi-Agent Hub: Extract Claude Code Configs
 
 ### 目的
