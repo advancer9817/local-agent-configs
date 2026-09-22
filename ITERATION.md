@@ -183,7 +183,6 @@ echo '{"hook_event_name":"UserPromptSubmit","user_prompt":"test","session_id":"t
 # Codex: 删除 ~/.codex/instructions.md
 ```
 
-
 ## 2026-05-22 18:11:19 +0800 - Repository sync publish
 
 - Branch: `main`
@@ -565,6 +564,290 @@ git -C /home/advancer/project/hermes-local-agent-configs status
 
 ---
 
+---
+
+## 2026-09-12T15:45:00+0800 — Fix Local Voice STT (Whisper Model Cache & CPU Inference) & Set Chinese Recognition
+
+### 目的
+修复 Hermes 语音输入转写失败问题（解决离线模型缺失引发的 `Network is unreachable` 以及 WSL 环境下调用 GPU 时触发的 `libcublas.so.12 is not found` 错误），并将全局及本地语音转写配置为中文识别。
+
+### 变更摘要
+1. **补全本地 Whisper 权重**：
+   - 部署 `faster-whisper-base` 与 `faster-whisper-tiny` 离线模型至 `~/.cache/huggingface/hub/`，阻断首次懒加载向外网拉取模型的超时与断网异常。
+2. **锁定 CPU/int8 推理设备**：
+   - WSL 环境缺少 NVIDIA CUDA 12 动态链接库（`libcublas.so.12`），WhisperModel 默认 `auto` 会误选 CUDA 并于分词生成时崩溃；
+   - 显式配置 `stt.local.device: cpu` 与 `stt.local.compute_type: int8`，避开 CUDA 动态库依赖。
+3. **设置中文识别**：
+   - 配置 `stt.language: zh` 与 `stt.local.language: zh`，确保语音转写默认为中文识别。
+4. **受控配置仓库同步**：
+   - 同步脱敏配置至 `hermes-local-agent-configs/config.yaml`。
+
+### 影响范围
+- Live 运行时：`~/.hermes/config.yaml`、`~/.cache/huggingface/hub/`
+- 本地配置版本库：`config.yaml`、`ITERATION.md`
+
+### 验证命令
+```bash
+/home/advancer/.hermes/hermes-agent/venv/bin/python -c 'from tools.voice_mode import transcribe_recording; print(transcribe_recording("/tmp/test.wav"))'
+```
+
+### 风险与回滚
+- 风险：纯 CPU 推理耗时稍长于高配 GPU，但兼容性与稳定性为 100%。
+- 回滚：`hermes config set stt.language en && hermes config set stt.local.device auto`。
+
+---
+
+## 2026-09-12T15:47:00+0800 — Add Mandatory Progress-Checkpoint Protocol to SOUL.md
+
+### 目的
+解决长任务执行期间"连续工具调用、无有效反馈"的黑盒体验：模型按步执行却长时间不交代主线任务、原因判断与阶段结果，用户无法判断其在做什么、为何这么做。
+
+### 变更摘要
+1. **根因定位**：
+   - 反馈通道本身是通的——桌面端后端走 `hermes serve`（platform=api_server），其 display 层属 `_TIER_HIGH`，`interim_assistant_messages=True`，中间文本可正常送达；
+   - 缺失的是内容约束：原 SOUL 仅有"单句技术意图"要求，无"主线锚定 + 阶段检查点 + 原因/结果交代"的强制协议；
+   - Hermes 无原生闸门：`tool_loop_guardrails` 只覆盖"重复失败/无进展"，不覆盖"静默连发"，故只能在提示词层强制。
+2. **SOUL.md 新增 `## 2.4 阶段性汇报协议 (Progress Checkpoint，长任务强制)`**：
+   - 主线锚定（首个工具调用前交代目标/阶段拆分/入手点及理由，压缩或续做后重新锚定）；
+   - 检查点触发条件（阶段完成、连续 3 次工具调用无文字、静默 >90s、同一问题排查 >2 轮）；
+   - 检查点四要素（主线进度 / 原因判断与证据、是否偏离预期 / 结果与影响 / 下一步及理由）；
+   - 结果优先于动作、异常即时上报、禁止连续 `content: ""` 静默连发、收尾复盘与未完成如实标注。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`（备份 `SOUL.md.bak-progress-20260912_154628`）
+- 本地配置版本库：`SOUL.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep -n "阶段性汇报协议" ~/.hermes/SOUL.md
+diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
+```
+
+### 风险与回滚
+- 风险：检查点提频会略增输出 token 与回复长度；已用"自然语言连贯表述、禁止模板框"约束避免机械报幕。
+- 回滚：`cp ~/.hermes/SOUL.md.bak-progress-20260912_154628 ~/.hermes/SOUL.md`。
+- 生效方式：SOUL.md 于会话启动时构建进系统提示词，需 `/new` 或重启桌面端后端生效。
+
+---
+
+## 2026-09-12T15:51:00+0800 — Externalize Long-Task Progress via Mandatory todo Usage
+
+### 目的
+在"阶段性汇报协议"基础上补齐硬抓手：把阶段目标与当前状态外化为 todo 任务项，使进度成为用户可直接观察的状态，而不是仅存在于模型文字里的自述。
+
+### 变更摘要
+1. **前置核实**：`hermes tools list` 确认 `todo` toolset 已全局启用（Task Planning）；`todo_list` 支持 `merge=true` 增量更新、`parent` 嵌套、单一 `in_progress`。
+2. **SOUL.md 第 2.4 条新增"进度外化（todo 强制）"**：
+   - 3 步以上（或单步预计 >2 分钟）任务，首个工具调用**前**必须写入全量阶段清单；
+   - 每项必须是可验证的**产出**（做什么 + 判据），禁止"查看/读取/分析某文件"式动作项；
+   - 阶段切换即时 `merge=true` 更新，有且仅有一个 `in_progress`；失败项 `cancelled` 并补修正项；`completed` 仅标已验证项；
+   - 检查点文字进度必须与 todo 状态一致，严禁虚标；无法依赖面板时检查点自带"阶段 N/M"。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`（备份 `SOUL.md.bak-todo-20260912_155013`）
+- 本地配置版本库：`SOUL.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep -n "进度外化" ~/.hermes/SOUL.md
+diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
+```
+
+### 验证结果
+- `todo_list` 实机调用通过：写入 5 项计划 → revision 1；`merge=true` 更新 2 项 → revision 2；状态与 summary（total 5 / pending 0 / in_progress 1 / completed 4）一致。
+- SOUL.md 与仓库副本 diff 退出码 0（完全一致）。
+
+### 风险与回滚
+- 风险：无。todo 为会话内状态，不落盘、不改变工具集。
+- 回滚：`cp ~/.hermes/SOUL.md.bak-todo-20260912_155013 ~/.hermes/SOUL.md`。
+- 生效方式：需 `/new` 或重启后端进程加载新系统提示词。
+
+---
+
+## 2026-09-12T16:42:00+0800 — Simplify Interaction Rules into Plain Language
+
+### 目的
+前两轮新增的"阶段性汇报协议/进度外化"写得过于制度化（①②③④要素、成串"必须/严禁"），用户反馈过于格式化。改为口语化、原则性的短条款，保留约束力但去掉模板感。
+
+### 变更摘要
+- 重写 `## 2. 交互与沟通规范`：由 4 组带格式公式与要素编号的条目，压缩为 5 条白话。
+- 保留的实质约束：全中文说人话、动手前一句话交代意图（且禁止无信息量报幕）、长任务边做边说（含卡住/走错路立刻讲）、复杂任务可选 todo 列清单、未完成如实说、终端命令单步原子。
+- 去掉的内容：`【动词短语】+【标的】+【目的】`公式、"检查点四要素 ①②③④"、"todo 强制/严禁静默连发"等硬性编号条款。
+- 文件体积：6742 → 3580 字节。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`（备份 `SOUL.md.bak-plain-20260912_164143`）
+- 本地配置版本库：`SOUL.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+diff ~/.hermes/SOUL.md /home/advancer/project/hermes-local-agent-configs/SOUL.md
+```
+
+### 风险与回滚
+- 风险：约束力度下降，弱模型可能回到"闷头连跑"的状态；若再出现，可加回少量具体条款而非整段框架。
+- 回滚：`cp ~/.hermes/SOUL.md.bak-plain-20260912_164143 ~/.hermes/SOUL.md`。
+- 生效方式：需 `/new` 或重启后端进程。
+
+---
+
+## 2026-09-12T16:50:00+0800 — Verify SOUL Rule Effectiveness; Neutralize Personality Override
+
+### 目的
+验证重写后的交互规范是否真正生效，定位"模型长时间无有效反馈"的真实成因。
+
+### 核查结论（实测，非推断）
+1. **注入成功**：用 `agent.system_prompt.build_system_prompt` 实机构建提示词，第 2 节全文位于 stable 段（3783→3922 字符），`说人话` 命中索引 413。
+2. **存在覆盖冲突（已修）**：`display.personality: catgirl` 的人格文本经 `agent/conversation_loop.py:1048`（`sp + "\n\n" + ephemeral_system_prompt`）拼接在系统提示词**之后**，实测 Neko 文本位于末尾（索引 3932）。后置指令压过后置冲突 → 第 2.1 条"不要猫娘腔"被抵消。已 `hermes config set display.personality ''` 清空，复验 Neko 索引 = -1。
+3. **生效时机**：SOUL.md 在 `agent._cached_system_prompt` 中按会话缓存（`load_soul_md` 无缓存但仅构建时读取）→ 改 SOUL 必须 `/new`；config.yaml 按文件签名缓存（`load_config`）→ 改 config 下一轮生效。
+4. **行为层验证（A/B 实测，默认 CLI 模型）**：
+   - 同一多步任务，规范改前：5 次工具调用 / 5 条动作标签（16-41 字符），无阶段说明；
+   - 规范加"每三四步/阶段完成时说两三句"后：3 次工具调用 / 3 条动作标签（16-40 字符），仍无阶段说明 → **措辞级微调不改变行为**；
+   - 换 `claude-sonnet-4-6`（CPA）同一任务：2 次工具调用均为 `content: ""`，完全静默，比 flash 模型更差。
+   - 结论：提示词只能保证"有文字"，无法保证"有内容"；`tool_loop_guardrails` 无"沉默闸门"。
+5. **可控硬闸门（未部署）**：`pre_llm_call` shell hook 每轮执行且经 `agent/turn_context.py::_collect_pre_llm_call_context` 把 `{"context": ...}` 注入**用户消息**（非系统提示词），可据会话历史动态判定"连续 N 次工具调用无交代"并注入强制提醒。注册需 config `hooks:` 条目 + `shell-hooks-allowlist.json` 授权（`hooks_auto_accept` 当前 false）。
+
+### 变更摘要
+- `display.personality`：`catgirl` → `''`（清除与 SOUL 2.1 冲突的人格覆写）。
+- SOUL.md 第 3 条补入可判定触发条件与"别只贴一句动作标签"。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`（备份 `SOUL.md.bak-trigger-20260912_164620`）、`~/.hermes/config.yaml`（备份 `config.yaml.bak-personality-20260912_164404`）
+- 本地配置版本库：`SOUL.md`、`config.yaml`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep -n "personality" ~/.hermes/config.yaml
+/home/advancer/.hermes/hermes-agent/venv/bin/python /tmp/probe_eff.py
+```
+
+### 风险与回滚
+- 风险：失去 catgirl 人格（与用户既定"严禁可爱风/猫娘腔"一致，符合预期）。
+- 回滚：`cp ~/.hermes/config.yaml.bak-personality-20260912_164404 ~/.hermes/config.yaml`；SOUL 回滚 `cp ~/.hermes/SOUL.md.bak-trigger-20260912_164620 ~/.hermes/SOUL.md`。
+
+---
+
+## 2026-09-12T16:56:00+0800 — Decision: Do Not Deploy Hook-Based Progress Gate
+
+### 目的
+记录用户对"硬闸门"方案的决定，避免后续会话重复提案。
+
+### 决定
+- **不部署** `pre_llm_call` 提醒钩子 / `pre_tool_call` 阻断钩子。
+- 接受的下限：**每次工具调用附带一句文字**（当前模型栈下已稳定达成），不追求强制性的阶段性叙事。
+- 需要细节时由用户主动追问，不引入每轮执行的脚本与 `shell-hooks-allowlist.json` 授权。
+
+### 当前生效状态
+- SOUL.md 第 2 节为白话版（含"别只贴一句动作标签"），需 `/new` 生效。
+- `display.personality: ''`（已清除 catgirl 覆写）。
+- 无任何 shell hook 注册；`hooks_auto_accept: false` 保持不变。
+
+### 复查触发条件
+若用户再次反馈"长时间无有效反馈"，先确认是否已 `/new`（SOUL 按会话缓存）；仍不满足再考虑 hook 方案。
+
+---
+
+## 2026-09-12T17:05:00+0800 — Remove Tone Restrictions & Restore Catgirl Personality
+
+### 目的
+根据用户要求，移除 SOUL.md 中对猫娘腔、可爱风、颜文字的限制，并恢复 `display.personality: catgirl` 配置。
+
+### 变更摘要
+1. **SOUL.md**：移除“不要可爱风、猫娘腔、颜文字和一堆感叹号”约束，简化为“默认全中文，说人话。”，不再对助手语气风格做生硬限制。
+2. **config.yaml**：将 `display.personality` 恢复为 `catgirl`。
+3. **hermes-agent skill**：同步更新关于 personality 覆盖机制的描述为纯中立客观说明。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`、`~/.hermes/config.yaml`
+- 本地配置版本库：`SOUL.md`、`config.yaml`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep "catgirl" /home/advancer/.hermes/config.yaml
+grep "说人话" /home/advancer/.hermes/SOUL.md
+git -C /home/advancer/project/hermes-local-agent-configs status
+```
+
+### 风险与回滚
+- 风险：无。
+- 回滚：`hermes config set display.personality ''` 并恢复 SOUL.md。
+
+---
+
+## 2026-09-12T17:15:00+0800 — Eradicate Action-Narrating "正在xxx" Anti-Pattern & Clean USER.md
+
+### 目的
+彻底根除每次工具调用前机械输出“正在检索/正在读取/正在定位……”的报幕流水账，解决模型教条化机械输出导致体验恶化的问题。
+
+### 根因与修复
+1. **持久化记忆污染排查**：在 `USER.md`（USER PROFILE 记忆层）中发现了残留的 `关键工具调用前伴随输出单句技术意图(动词+标的+目的)`，导致无论系统提示词如何修改，每轮模型推理都会被强制注入该公式，引发模型教条式套用“正在[动词]+[标的]+[目的]”。
+2. **USER.md 清理重构**：使用 `memory` 工具将 USER PROFILE 中的该条目彻底重构，明确写入 `严禁在每次工具调用前机械报幕（如'正在xxx'流水账）；遇到卡点、需决策或有阶段结论时才交代`，同时移除对语气/猫娘的陈旧限制，精简整个 user profile 字符至预算内（93%）。
+3. **SOUL.md 第 2 节改写**：删除“动手前先一句话交代在做什么”，明确规定“工具调用直接执行，严禁每次调用前输出‘正在xxx’机械报幕；仅在长任务阶段性完成、卡住需要决策或出阶段结论时，才用自然简短的话交代进展”。
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`、`~/.hermes/memories/USER.md`
+- 本地配置版本库：`SOUL.md`、`memories/USER.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep "正在xxx" ~/.hermes/SOUL.md
+grep "正在xxx" ~/.hermes/memories/USER.md
+git -C /home/advancer/project/hermes-local-agent-configs status
+```
+
+### 风险与回滚
+- 风险：无。
+- 回滚：`git checkout HEAD~1 -- SOUL.md memories/USER.md` 并回写 `~/.hermes/`。
+
+---
+
+## 2026-09-12T17:25:00+0800 — Refine Action Briefing (Drop Subject & "正在") + Mandate Detailed Long-Form Output on Critical Decisions
+
+### 目的
+精准对齐用户交互要求：
+1. 需要交代动作，但必须**去掉主语，严禁“我正在……”或“正在……”**，直接说明做什么与目的（如“检索 memorycore 历史提交，明确最新基线”）；
+2. 遇到重大决策（架构选型、核心排障发现、技术方案对比、需要用户拍板等关键节点）时，必须输出一段详实连贯的长文本深入剖析，讲透前因后果与影响。
+
+### 变更摘要
+1. **SOUL.md 第 2 节（交互与沟通规范）**：
+   - 规定**动作交代规范（去主语、禁止“正在/我正在”）**：交代要做的事情时去掉主语，严禁使用“正在……”或“我正在……”前缀，直接陈述动作与目的；
+   - 规定**重大决策长文本深度剖析**：重大架构选型、排障核心突破、方案取舍及决策节点，输出详实长文本完整阐明依据、逻辑与影响，严禁轻描淡写带过；
+   - 保持长任务阶段性交代与未完成如实说明。
+2. **USER.md (USER PROFILE 长期记忆)**：
+   - 同步更新为：`交互沟通: 默认全中文；交代动作去主语、严禁'正在/我正在'前缀，直述要做什么；重大决策/排障核心/方案取舍输出详实长文本深入剖析；命令单步原子化严禁&&或分号。程序层聚合计算，禁SQL堆复杂函数。`
+
+### 影响范围
+- Live 运行时：`~/.hermes/SOUL.md`、`~/.hermes/memories/USER.md`
+- 本地配置版本库：`SOUL.md`、`memories/USER.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+grep -n "正在" ~/.hermes/SOUL.md
+grep -n "正在" ~/.hermes/memories/USER.md
+git -C /home/advancer/project/hermes-local-agent-configs status
+```
+
+### 风险与回滚
+- 风险：无。
+- 回滚：`git checkout HEAD~1 -- SOUL.md memories/USER.md` 并回写 `~/.hermes/`。
+
+---
+
+## 2026-09-12T17:35:00+0800 — Sanitize config.yaml & Push Local Commits to Remote
+
+### 目的
+在执行用户授权的远程推送前，严格执行受控企业环境安全红线，对配置仓库中的 `config.yaml` 进行彻底脱敏（凭据统一替换为 `[REDACTED]`），随后推送全部提交至远程仓库。
+
+### 变更摘要
+1. **凭据彻底脱敏**：将 `config.yaml` 中 `custom_providers` 的 `api_key` 字段全面替换为 `[REDACTED]`，确保零敏感信息上云。
+2. **推送执行**：经用户明确授权，将本地 accumulated 提交（含语音输入 CPU 修复、SOUL/USER 沟通规范重构、猫娘人设恢复、去报幕协议等）推送到远程分支 `origin/main`。
+
+### 影响范围
+- 本地配置版本库：`config.yaml`、`ITERATION.md`
+- 远程仓库：`origin/main`
+
+---
+
 ## 2026-09-14T09:30:00+0800 — Fix cc-switch Input Hang Under WSLg (WebKitGTK + IME)
 
 ### 目的
@@ -690,39 +973,3 @@ bash /home/advancer/project/local-agent-configs/scripts/restore_to_codex.sh
 ### 验证命令
 ```bash
 git -C /home/advancer/project/hermes-local-agent-configs status
-bash /home/advancer/project/hermes-local-agent-configs/scripts/restore_to_claude.sh
-```
-
-### 风险与回滚
-- 风险：低。新增资产全部置于独立的 `claude/` 目录与新脚本中，不影响原有 Hermes 的 `config.yaml`、`SOUL.md` 与 profile 结构。
-- 回滚：`git rm -r claude/ scripts/restore_to_claude.sh` 并回滚 `README.md` 与 `ITERATION.md`。
-
----
-
-## 2026-09-22T17:05:00+0800 — Rename Project Repository to local-agent-configs
-
-### 目的
-随着 Claude Code 全套配置及恢复链路接入，原 `hermes-local-agent-configs` 项目名称已无法涵盖多 Agent 统一配置中心的职能。正式将项目目录与说明重命名为 `local-agent-configs`，并建立向后兼容软链接避免旧脚本断链。
-
-### 变更摘要
-1. **项目重命名与软链接兼容**：
-   - 物理目录重命名：`/home/advancer/project/hermes-local-agent-configs` -> `/home/advancer/project/local-agent-configs`；
-   - 建立兼容软链接：`/home/advancer/project/hermes-local-agent-configs` -> `local-agent-configs`，确保既有 Hermes hook 与引用平滑过渡。
-2. **文档与配置全局更新**：
-   - 更新 `README.md` 标题与路径引用；
-   - 更新 `SOUL.md`、`restore_to_hermes.sh`、`restore_to_claude.sh` 中的路径指引；
-   - 同步更新 `~/.hermes/SOUL.md` 运行时配置指向。
-
-### 影响范围
-- 仓库路径：`/home/advancer/project/local-agent-configs`
-- 符号链接：`/home/advancer/project/hermes-local-agent-configs`
-- `README.md`、`SOUL.md`、`ITERATION.md`
-- `~/.hermes/SOUL.md`
-
-### 验证命令
-```bash
-ls -ld /home/advancer/project/local-agent-configs
-ls -ld /home/advancer/project/hermes-local-agent-configs
-git -C /home/advancer/project/local-agent-configs status
-
-
