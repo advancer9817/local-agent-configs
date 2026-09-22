@@ -1,8 +1,8 @@
 # Codex Agent Instructions
 
-## lmmcp 记忆系统
+## lmmcp / mcore 记忆系统
 
-你有访问 `local_memory` MCP server 的权限（http://127.0.0.1:8318/mcp）。
+你有访问 `local_memory` / `mcore` MCP server 的权限（http://127.0.0.1:8318/mcp）。
 
 **每次收到用户问题时，在回答之前必须执行以下步骤：**
 
@@ -34,6 +34,6 @@ memory_ingest(messages=[
 
 ## 注意事项
 
-- lmmcp 服务运行在 http://127.0.0.1:8318/mcp
+- 记忆中枢边车服务运行在 http://127.0.0.1:8318/mcp
 - 如果 memory_context 返回空或服务不可用，直接回答，不要报错
 - ingest 步骤是后置的，不影响回答质量，失败时静默跳过

@@ -1,35 +1,61 @@
 # Local Agent Configs
 
-Sanitized backup of this machine's local Agent configurations (Hermes & Claude Code).
+Sanitized backup of this machine's local AI Agent configurations.
 
-## Contents
+Each Agent maintains its own dedicated subfolder to keep configurations cleanly isolated and manageable.
 
-### 1. Hermes Configs
-- `config.yaml` — sanitized root Hermes config.
-- `SOUL.md` — default General Multi-Agent Router prompt.
-- `memories/` — sanitized durable memory/user profile markdown.
-- `profiles/<role>/config.yaml` and `SOUL.md` — SDLC role profile configs/prompts.
-- `PROFILE_LIST.txt` — profile inventory from `hermes profile list`.
-- `references/sdlc-role-profiles.md` — role profile reference.
-- `.env.example` — env variable names only, all values redacted.
-- `scripts/restore_to_hermes.sh` — conservative restore script for Hermes.
+---
 
-### 2. Claude Code Configs (`claude/`)
-- `claude/settings.json` — 全局环境、代理网关 (172.20.0.1:7890)、mcore MCP 与思考配置。
-- `claude/settings.local.json` — 本地权限白名单配置。
-- `claude/config.json` — 更新状态与主 API Key 标头。
-- `claude/CLAUDE.md` — 全局行为守则与透明度规范。
-- `claude/installed_plugins.json` / `known_marketplaces.json` — 插件市场与已装插件清单。
-- `claude/rules/common/` — 通用架构、编码规范、性能、Git 与安全等规则集。
-- `claude/rules/typescript/` — TypeScript 专用规则集。
-- `claude/scripts/statusline.sh` — 状态栏脚本。
-- `scripts/restore_to_claude.sh` — 一键恢复 Claude Code 配置至 `~/.claude/`。
+## Directory Structure
 
-## Security policy
+```text
+local-agent-configs/
+├── claude/             # Claude Code configurations & rules
+│   ├── CLAUDE.md
+│   ├── settings.json
+│   ├── settings.local.json
+│   ├── config.json
+│   ├── installed_plugins.json
+│   ├── known_marketplaces.json
+│   ├── rules/          # common/ & typescript/ rule sets
+│   ├── scripts/        # statusline.sh
+│   └── plugins_archive/
+├── hermes/             # Hermes Agent configurations & profiles
+│   ├── config.yaml
+│   ├── SOUL.md
+│   ├── PROFILE_LIST.txt
+│   ├── memories/
+│   ├── profiles/       # SDLC role profiles
+│   ├── references/
+│   └── plugins/        # mcore-memory plugin
+├── codex/              # OpenAI Codex CLI configurations
+│   ├── config.toml     # Sanitized config (proxy, providers)
+│   ├── instructions.md # Memory context and prompt guidelines
+│   └── hooks.json      # Session hooks for mcore
+└── scripts/            # Restore and environment maintenance tools
+    ├── restore_to_claude.sh
+    ├── restore_to_hermes.sh
+    ├── restore_to_codex.sh
+    ├── mcore-context.sh
+    ├── mcore-ingest.py
+    └── cc-switch-wslg-fix/
+```
 
-This repo intentionally excludes live secrets and runtime state: `.env`, `auth.json`, OAuth tokens, sessions, logs, caches, SQLite state, and venvs. Any secret-like values in YAML/Markdown/JSON are replaced with `<REDACTED>` or placeholder identifiers.
+---
 
-## Restore
+## Security Policy
 
-- **Hermes**: `./scripts/restore_to_hermes.sh`
+This repo intentionally excludes live secrets, auth tokens, database files, and runtime state:
+- `.env`, `auth.json`, OAuth tokens, session keys
+- SQLite files (`*.sqlite`, `*.db`)
+- Logs, caches, temporary files, and venvs
+
+All sensitive tokens are replaced with `<REDACTED>` placeholders.
+
+---
+
+## One-Click Restore Commands
+
 - **Claude Code**: `./scripts/restore_to_claude.sh`
+- **Hermes**: `./scripts/restore_to_hermes.sh`
+- **Codex**: `./scripts/restore_to_codex.sh`

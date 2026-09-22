@@ -1,0 +1,64 @@
+model_provider = "custom"
+model = "gpt-6-astra"
+disable_response_storage = true
+approvals_reviewer = "user"
+model_reasoning_effort = "high"
+
+[model_providers]
+[marketplaces.openai-bundled]
+last_updated = "2026-04-30T08:26:46Z"
+source_type = "local"
+source = '\\?\C:\Users\e-pengyang.DU\.codex\.tmp\bundled-marketplaces\openai-bundled'
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = false
+base_url = "https://jizhiapi.site/v1"
+experimental_bearer_token = "<REDACTED>"
+
+[plugins."browser-use@openai-bundled"]
+enabled = true
+
+[projects]
+
+[projects.'c:\users\e-pengyang.du']
+trust_level = "trusted"
+[projects."/home/advancer"]
+trust_level = "trusted"
+
+[projects.'f:\code\tpms']
+trust_level = "trusted"
+
+[mcp_servers]
+
+[tui.model_availability_nux]
+"gpt-5.5" = 4
+
+[env]
+HTTPS_PROXY = 'http://172.20.0.1:7890'
+HTTP_PROXY = 'http://172.20.0.1:7890'
+
+[hooks]
+[hooks.state]
+[hooks.state."/home/advancer/.codex/hooks.json:session_start:0:0"]
+trusted_hash = "sha256:50045155bc48e3eca754d88aedf599d80d2927e8400fa89c91b7e97299dd5273"
+
+[hooks.state."/home/advancer/.codex/hooks.json:stop:0:0"]
+trusted_hash = "sha256:60a72b3085a175c7ea6e95f56932f06314adb2e00c1af32127a0d42611faeaa3"
+
+[hooks.state."/home/advancer/.codex/hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:119e19749aa41071786f7cc9597a9e8aa19da9775907cc5bebe65eae3a4bb5c6"
+
+[windows]
+sandbox = "elevated"
+
+[notice]
+hide_full_access_warning = true
+
+[features]
+memories = true
+
+[memories]
+use_memories = true
+generate_memories = true

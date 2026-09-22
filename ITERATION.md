@@ -622,8 +622,43 @@ git -C /home/advancer/project/hermes-local-agent-configs diff SOUL.md
 ```
 
 ### 风险与回滚
-- 风险：无。仅澄清行为准则，不改变代码与外部接口。
-- 回滚：`git checkout SOUL.md` 并同步还原 `~/.hermes/SOUL.md`。
+- 风险：低。原路径已设置符号链接，Hermes 历史脚本可继续正常工作。
+- 回滚：`mv local-agent-configs hermes-local-agent-configs` 并删除符号链接。
+
+---
+
+## 2026-09-22T17:15:00+0800 — Refactor Directory Layout into Agent Subfolders (claude, hermes, codex)
+
+### 目的
+彻底改变原先以 Hermes 为中心且部分资产散落根目录的布局，重构为以智能体为边界的清晰子目录架构（`claude/`、`hermes/`、`codex/`），实现各 Agent 本地配置自治与统一运维管理。
+
+### 变更摘要
+1. **目录结构重塑**：
+   - `hermes/`：将根目录下的 `config.yaml`、`SOUL.md`、`PROFILE_LIST.txt`、`memories/`、`profiles/`、`references/` 与 `plugins/hermes/` 全部收敛迁入；
+   - `claude/`：统一纳管 `settings.json`、`CLAUDE.md`、`rules/`、`scripts/statusline.sh` 以及插件存档；
+   - `codex/`：新增纳管脱敏的 `config.toml`（代理修复为 172.20.0.1:7890）、`instructions.md`（mcore/lmmcp 上下文规范）与 `hooks.json`；
+   - `scripts/`：统一存放各 Agent 一键恢复脚本（`restore_to_claude.sh`、`restore_to_hermes.sh`、`restore_to_codex.sh`）及通用运维工具。
+2. **恢复脚本与文档适配**：
+   - 适配 `restore_to_hermes.sh` 读取 `hermes/` 源路径；
+   - 新建 `restore_to_codex.sh`；
+   - 更新 `README.md`，绘制三 Agent 子目录树状图与安全策略。
+
+### 影响范围
+- 根目录资产归集至 `claude/`、`hermes/`、`codex/`
+- `scripts/restore_to_hermes.sh`、`scripts/restore_to_codex.sh`
+- `README.md`、`ITERATION.md`
+
+### 验证命令
+```bash
+git -C /home/advancer/project/local-agent-configs status
+bash /home/advancer/project/local-agent-configs/scripts/restore_to_hermes.sh
+bash /home/advancer/project/local-agent-configs/scripts/restore_to_claude.sh
+bash /home/advancer/project/local-agent-configs/scripts/restore_to_codex.sh
+```
+
+### 风险与回滚
+- 风险：低。仅为仓库内部文件目录组织结构重排，不影响各 Agent 运行时的直接配置。
+- 回滚：`git checkout HEAD~1` 并重新组织目录。
 
 ---
 

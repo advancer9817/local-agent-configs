@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../hermes" && pwd)"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 BACKUP_DIR="$HERMES_HOME/backups/restore_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BACKUP_DIR"
