@@ -662,4 +662,32 @@ bash /home/advancer/project/hermes-local-agent-configs/scripts/restore_to_claude
 - 风险：低。新增资产全部置于独立的 `claude/` 目录与新脚本中，不影响原有 Hermes 的 `config.yaml`、`SOUL.md` 与 profile 结构。
 - 回滚：`git rm -r claude/ scripts/restore_to_claude.sh` 并回滚 `README.md` 与 `ITERATION.md`。
 
+---
+
+## 2026-09-22T17:05:00+0800 — Rename Project Repository to local-agent-configs
+
+### 目的
+随着 Claude Code 全套配置及恢复链路接入，原 `hermes-local-agent-configs` 项目名称已无法涵盖多 Agent 统一配置中心的职能。正式将项目目录与说明重命名为 `local-agent-configs`，并建立向后兼容软链接避免旧脚本断链。
+
+### 变更摘要
+1. **项目重命名与软链接兼容**：
+   - 物理目录重命名：`/home/advancer/project/hermes-local-agent-configs` -> `/home/advancer/project/local-agent-configs`；
+   - 建立兼容软链接：`/home/advancer/project/hermes-local-agent-configs` -> `local-agent-configs`，确保既有 Hermes hook 与引用平滑过渡。
+2. **文档与配置全局更新**：
+   - 更新 `README.md` 标题与路径引用；
+   - 更新 `SOUL.md`、`restore_to_hermes.sh`、`restore_to_claude.sh` 中的路径指引；
+   - 同步更新 `~/.hermes/SOUL.md` 运行时配置指向。
+
+### 影响范围
+- 仓库路径：`/home/advancer/project/local-agent-configs`
+- 符号链接：`/home/advancer/project/hermes-local-agent-configs`
+- `README.md`、`SOUL.md`、`ITERATION.md`
+- `~/.hermes/SOUL.md`
+
+### 验证命令
+```bash
+ls -ld /home/advancer/project/local-agent-configs
+ls -ld /home/advancer/project/hermes-local-agent-configs
+git -C /home/advancer/project/local-agent-configs status
+
 

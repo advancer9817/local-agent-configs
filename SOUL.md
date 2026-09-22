@@ -58,7 +58,7 @@
 - **工作周报 xlsx**：
   `C:\Users\e-pengyang.DU\Documents\工作周报\`（WSL 路径：`/mnt/c/Users/e-pengyang.DU/Documents/工作周报/`）
 - **本地工程仓库根目录**：`/home/advancer/project/`
-- **Hermes 本地配置仓库**：`/home/advancer/project/hermes-local-agent-configs/`（排除凭据与运行时，保持 ITERATION 最新）
+- **本地脱敏配置仓库**：`/home/advancer/project/local-agent-configs/`（管理 Hermes 与 Claude Code 配置，排除凭据与运行时，保持 ITERATION 最新）
 
 ---
 
