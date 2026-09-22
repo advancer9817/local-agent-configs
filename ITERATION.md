@@ -625,4 +625,41 @@ git -C /home/advancer/project/hermes-local-agent-configs diff SOUL.md
 - 风险：无。仅澄清行为准则，不改变代码与外部接口。
 - 回滚：`git checkout SOUL.md` 并同步还原 `~/.hermes/SOUL.md`。
 
+---
+
+## 2026-09-22T16:55:00+0800 — Expand Config Repo to Multi-Agent Hub: Extract Claude Code Configs
+
+### 目的
+将原单一 Hermes 本地配置仓库（hermes-local-agent-configs）升级重构为支持多 Agent（Hermes 与 Claude Code 等）的本地统一脱敏配置中心，实现 Claude 运行配置、全局规则体系与状态栏脚本受版本控制管理。
+
+### 变更摘要
+1. **提取与归档 Claude Code 配置**：
+   - `claude/settings.json`：全局环境（含已修复的 WSL2 宿主机代理 `172.20.0.1:7890`、mcore 边车连接、模型映射与扩展思考配置）；
+   - `claude/settings.local.json`：本地自动授权白名单；
+   - `claude/config.json`：更新与全局 API 状态；
+   - `claude/CLAUDE.md`：全局最高优先级行为守则与透明度规约；
+   - `claude/installed_plugins.json` / `known_marketplaces.json`：已装插件（superpowers）与市场源配置；
+   - `claude/rules/common/` 与 `claude/rules/typescript/`：全量架构、编码风格、TDD、代码审查、安全检查规则；
+   - `claude/scripts/statusline.sh`：本地化状态栏脚本。
+2. **构建配套运维恢复脚本**：
+   - 新增 `scripts/restore_to_claude.sh`，实现一键将仓库受控 Claude 配置幂等恢复到 `~/.claude/`。
+3. **文档与项目定位升级**：
+   - 更新 `README.md`，确立 Hermes 与 Claude Code 双智能体配置归档与恢复操作指南。
+
+### 影响范围
+- `claude/`（新增全量 Claude 配置资产与规则集）
+- `scripts/restore_to_claude.sh`
+- `README.md`
+- `ITERATION.md`
+
+### 验证命令
+```bash
+git -C /home/advancer/project/hermes-local-agent-configs status
+bash /home/advancer/project/hermes-local-agent-configs/scripts/restore_to_claude.sh
+```
+
+### 风险与回滚
+- 风险：低。新增资产全部置于独立的 `claude/` 目录与新脚本中，不影响原有 Hermes 的 `config.yaml`、`SOUL.md` 与 profile 结构。
+- 回滚：`git rm -r claude/ scripts/restore_to_claude.sh` 并回滚 `README.md` 与 `ITERATION.md`。
+
 
