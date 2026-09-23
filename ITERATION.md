@@ -2,6 +2,17 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-23 14:40:00 +0800 - refactor(hermes): adopt Plan A natural engineering interaction over brittle per-step dual-paragraph rule
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 彻底废除每步强行“两段式+空行”的死板约束，解决多步调用下模型注意力衰减与自复制坍塌的死结；
+  2. 确立“方案 A：重阶段事实、轻单步报幕”原则：起手与转折直述技术意图，仅在拿到关键分水岭事实（断层/根因/分歧）时做阶段性判断交接；
+  3. 日常连贯查询干净推进，彻底消除“正在……”与“上步已……”等八股标签，避免流水账念经；
+  4. 同步更新 SOUL.md 与 USER.md。
+- 变更范围: `hermes/SOUL.md`, `hermes/memories/USER.md`
+
 ## 2026-09-23 14:35:00 +0800 - feat(hermes): enforce 2-paragraph narration with strict facts across multi-step tools
 
 - 项目: `hermes-local-agent-configs`
