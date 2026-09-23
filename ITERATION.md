@@ -2,6 +2,13 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-23 13:45:00 +0800 - config(hermes): disable tool_use_enforcement to eliminate hardcoded prompt override
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明: 将 agent.tool_use_enforcement 设为 false，彻底解除针对 Gemini 模型的硬编码 Conciseness 与 Keep going 英文指令注入。
+- 变更范围: `hermes/config.yaml`
+
 ## 2026-09-23 13:30:00 +0800 - feat(hermes): refine action transparency and execution feedback in SOUL.md
 
 - 项目: `hermes-local-agent-configs`
