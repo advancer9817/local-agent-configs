@@ -6,7 +6,7 @@
 
 - 项目: `hermes-local-agent-configs`
 - 分支: `main`
-- 修改说明: 优化交互与动作交代规范，增加上步结果承接与闭环约束，抑制单向报幕流水账。
+- 修改说明: 优化动作交代规范，增加步进反馈阀门（严禁超2次工具完全静默），防范过度矫正引发的失声与黑盒盲等。
 - 变更范围: `hermes/SOUL.md`
 
 ## 2026-05-19 14:17:17 +0800 - docs(hermes-local-agent-configs): update project iteration
