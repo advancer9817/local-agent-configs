@@ -1,8 +1,15 @@
-     1|# hermes-local-agent-configs 迭代记录
-     2|
-     3|本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
-     4|
-     5|## 2026-05-19 14:17:17 +0800 - docs(hermes-local-agent-configs): update project iteration
+# hermes-local-agent-configs 迭代记录
+
+本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
+
+## 2026-09-23 13:30:00 +0800 - feat(hermes): refine action transparency and execution feedback in SOUL.md
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明: 优化交互与动作交代规范，增加上步结果承接与闭环约束，抑制单向报幕流水账。
+- 变更范围: `hermes/SOUL.md`
+
+## 2026-05-19 14:17:17 +0800 - docs(hermes-local-agent-configs): update project iteration
      6|
      7|- 项目: `hermes-local-agent-configs`
      8|- 分支: `main`
