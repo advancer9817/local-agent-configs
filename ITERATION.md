@@ -2,6 +2,13 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-23 13:55:00 +0800 - memory(hermes): sync action transparency rules in USER.md
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明: 同步清除 USER.md 中残留的“(动词+标的+目的)”单向报幕要求，统一对齐为承上启下闭环规则。
+- 变更范围: `hermes/memories/USER.md`
+
 ## 2026-09-23 13:45:00 +0800 - config(hermes): disable tool_use_enforcement to eliminate hardcoded prompt override
 
 - 项目: `hermes-local-agent-configs`
