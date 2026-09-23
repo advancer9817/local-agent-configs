@@ -2,6 +2,17 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-23 14:35:00 +0800 - feat(hermes): enforce 2-paragraph narration with strict facts across multi-step tools
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明: 
+  1. 重构 SOUL.md 与 USER.md 交互规则，强制要求连续工具调用必须输出两段结构（首行具体事实，双换行空行，次行具体动作）；
+  2. 严厉封禁“只报下步干嘛、吃掉上步结果”的格式坍塌行为；
+  3. 彻底杜绝“正在……”及“上步已……”等任何八股前缀；
+  4. 经 21 轮长链路真实任务端到端实测验证，连续 8 步工具全部稳定保持事实+空行+动作标准结构。
+- 变更范围: `hermes/SOUL.md`, `hermes/memories/USER.md`
+
 ## 2026-09-23 13:55:00 +0800 - memory(hermes): sync action transparency rules in USER.md
 
 - 项目: `hermes-local-agent-configs`
