@@ -2,6 +2,18 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-28 15:20:00 +0800 - feat(hermes): enforce non-empty content with active verb intent on tool_calls to eliminate silent executions
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 彻底解决大模型在 Function Calling 场景下将意图藏入 reasoning 思维链而在前端表现为 0 字符空 content 哑巴调用的黑盒痛点；
+  2. 确立数据协议级铁律：发起 tool_calls 时 Assistant 消息的 content 文本字段严禁留空或为 0 字符；
+  3. 强制伴随式意图交代：必须在同一个响应中先用去主语的动词清晰陈述技术意图，再发起 tool_calls，破除 content 与 tool_calls 互斥偏见；
+  4. 严禁将面向用户的交代留于私有思考链（reasoning）中；
+  5. 同步升级 SOUL.md 与 USER.md。
+- 变更范围: `hermes/SOUL.md`, `hermes/memories/USER.md`
+
 ## 2026-09-23 14:40:00 +0800 - refactor(hermes): adopt Plan A natural engineering interaction over brittle per-step dual-paragraph rule
 
 - 项目: `hermes-local-agent-configs`
