@@ -2,6 +2,19 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-28 15:35:00 +0800 - feat(hermes): enforce 3-phase transparent content on tool_calls (last result + zh reasoning + next intent)
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 遵照用户要求，确立连续工具调用时 content 的三段式全流程透明输出结构：
+     - ① 上一轮工具调用的核心结果（首轮起步无上轮时跳过，陈述关键数据/分水岭事实）；
+     - ② 思维链（Reasoning）的核心逻辑与决策因果直接以通俗严谨中文提炼呈现在 content 中，无需翻阅折叠的英文思考链；
+     - ③ 本轮要调用的内容与技术意图（去主语动词陈述），随后伴随发起 tool_calls；
+  2. 严禁死板八股标签（严禁“正在……”、“上步已……”等），自然客观陈述；
+  3. 同步更新 SOUL.md 与 USER.md。
+- 变更范围: `hermes/SOUL.md`, `hermes/memories/USER.md`
+
 ## 2026-09-28 15:20:00 +0800 - feat(hermes): enforce non-empty content with active verb intent on tool_calls to eliminate silent executions
 
 - 项目: `hermes-local-agent-configs`
