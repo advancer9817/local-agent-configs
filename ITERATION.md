@@ -2,6 +2,20 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-28 15:55:00 +0800 - feat(claude,codex): sync 3-phase transparent tool execution rules to Claude and Codex
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 为 Claude Code (`~/.claude/CLAUDE.md`) 与 OpenAI Codex (`~/.codex/instructions.md`) 全面引入统一的“工具调用三段式透明铁律”：
+     - ① 上步结果（客观数据/事实，首步跳过）；
+     - ② 思考推导（内部思维链核心逻辑用中文直接提炼，决策因果白盒化）；
+     - ③ 本步动作（动词交代即将调用的工具意图与标的）；
+  2. 严禁面向用户的文本留空（content 为空），严禁将推导藏入 reasoning/thinking 表现为哑巴调用；
+  3. 彻底禁用“正在……”、“上步已……”等死板八股前缀；
+  4. 同步更新本地生产环境与脱敏配置仓库。
+- 变更范围: `claude/CLAUDE.md`, `codex/instructions.md`
+
 ## 2026-09-28 15:45:00 +0800 - refactor(hermes): condense 3-phase transparency rules into concise high-signal directives
 
 - 项目: `hermes-local-agent-configs`
