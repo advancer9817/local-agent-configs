@@ -2,6 +2,19 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-28 15:45:00 +0800 - refactor(hermes): condense 3-phase transparency rules into concise high-signal directives
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 精简交互规范文字冗余，删除重叠长句与嵌套编号，压缩篇幅 60%，提升指令密度与大模型遵从度；
+  2. 凝练保持三大核心铁律：
+     - ① 物理级禁止 tool_calls 时 content 为空（严禁将推导藏入 reasoning 当哑巴）；
+     - ② 三段式严格保真：①上步核心结果 ②思考因果中文提炼 ③本步动词动作，随后发起调用；
+     - ③ 严禁“正在……”、“上步已……”等死板八股标签；
+  3. 同步精简 SOUL.md 与 USER.md。
+- 变更范围: `hermes/SOUL.md`, `hermes/memories/USER.md`
+
 ## 2026-09-28 15:35:00 +0800 - feat(hermes): enforce 3-phase transparent content on tool_calls (last result + zh reasoning + next intent)
 
 - 项目: `hermes-local-agent-configs`
