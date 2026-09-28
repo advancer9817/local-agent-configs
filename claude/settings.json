@@ -1,6 +1,7 @@
 {
   "alwaysThinkingEnabled": true,
   "effortLevel": "xhigh",
+  "instructionFiles": "claude-md",
   "enabledPlugins": {
     "superpowers@superpowers-marketplace": true
   },

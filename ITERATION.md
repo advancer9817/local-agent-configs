@@ -2,6 +2,16 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-28 16:05:00 +0800 - fix(claude): configure instructionFiles to claude-md in settings.json to silence fallback notice
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 在 Claude 核心配置文件 `~/.claude/settings.json` 中配置 `"instructionFiles": "claude-md"`；
+  2. 彻底关闭 v2.1.283 内置 `agents-md` 插件因工作目录未放置独立 CLAUDE.md 而产生的回退提示 (`no CLAUDE.md found; AGENTS.md loaded`)；
+  3. 保持用户工作目录干净，所有行为由 Claude 核心配置目录统摄。
+- 变更范围: `claude/settings.json`
+
 ## 2026-09-28 15:55:00 +0800 - feat(claude,codex): sync 3-phase transparent tool execution rules to Claude and Codex
 
 - 项目: `hermes-local-agent-configs`
