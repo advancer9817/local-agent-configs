@@ -560,3 +560,9 @@ plugins:
   enabled:
     - mcore-memory
   disabled: []
+
+hooks:
+  pre_llm_call:
+    - command: python3 /home/advancer/.hermes/agent-hooks/superpowers-intent-gate.py
+      timeout: 5
+hooks_auto_accept: true

@@ -9,9 +9,9 @@
 - 修改说明:
   1. 正式安装启用 Superpowers 体系的核心调度技能 `using-superpowers` 与需求澄清技能 `superpowers-brainstorming`；
   2. 在 `SOUL.md`（生产端 `~/.hermes/SOUL.md` 与配置仓库 `hermes/SOUL.md`）交互规范中增加第 5 条“意图对齐与开工硬门禁”；
-  3. 强制在面对任何新功能开发、修改已有行为或目标不明确任务时，开工前严禁直接写入代码，必须先激活流程技能并获得用户明确确认；
-  4. 支持通过对话陈述与原生 clarify 交互工具完成方案推敲与定点审批。
-- 变更范围: `hermes/SOUL.md`
+  3. 编写并挂载 Shell Hook (`~/.hermes/agent-hooks/superpowers-intent-gate.py`) 至 `pre_llm_call` 生命周期事件，配置 `shell-hooks-allowlist.json` 白名单与 `hooks_auto_accept: true`，实现每轮 LLM 推理前动态注入 Superpowers 意图对齐硬门禁指令；
+  4. 强制在面对任何新功能开发、修改已有行为或目标不明确任务时，开工前严禁直接写入代码，必须先激活流程技能并获得用户明确确认。
+- 变更范围: `hermes/SOUL.md`, `hermes/config.yaml`, `scripts/superpowers-intent-gate.py`
 
 ## 2026-09-28 16:05:00 +0800 - fix(claude): configure instructionFiles to claude-md in settings.json to silence fallback notice
 
