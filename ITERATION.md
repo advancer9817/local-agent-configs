@@ -2,6 +2,17 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-29 10:18:00 +0800 - feat(hermes): integrate and enforce Superpowers intent clarification hard-gate
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 正式安装启用 Superpowers 体系的核心调度技能 `using-superpowers` 与需求澄清技能 `superpowers-brainstorming`；
+  2. 在 `SOUL.md`（生产端 `~/.hermes/SOUL.md` 与配置仓库 `hermes/SOUL.md`）交互规范中增加第 5 条“意图对齐与开工硬门禁”；
+  3. 强制在面对任何新功能开发、修改已有行为或目标不明确任务时，开工前严禁直接写入代码，必须先激活流程技能并获得用户明确确认；
+  4. 支持通过对话陈述与原生 clarify 交互工具完成方案推敲与定点审批。
+- 变更范围: `hermes/SOUL.md`
+
 ## 2026-09-28 16:05:00 +0800 - fix(claude): configure instructionFiles to claude-md in settings.json to silence fallback notice
 
 - 项目: `hermes-local-agent-configs`
