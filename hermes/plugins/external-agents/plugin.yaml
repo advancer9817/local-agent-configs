@@ -1,0 +1,8 @@
+name: external-agents
+version: 1.0.0
+description: "Orchestrate Claude Code and Codex CLI directly from Hermes as native tools or slash commands."
+author: "advancer"
+toolset: external-agents
+provides_tools:
+  - claude_code_exec
+  - codex_exec

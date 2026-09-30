@@ -558,6 +558,7 @@ platforms:
     cors_origins: '*'
 plugins:
   enabled:
+    - external-agents
     - mcore-memory
   disabled: []
 

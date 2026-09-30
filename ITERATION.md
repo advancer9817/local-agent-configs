@@ -2,6 +2,23 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-09-30 16:16:04 +0800 - feat(hermes): add external-agents plugin to orchestrate Claude Code and Codex
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 开发并交付 Hermes 原生插件 `external-agents`，为 Hermes 赋予直接编排调用本地 Claude Code CLI (`claude -p`) 与 OpenAI Codex CLI (`codex exec`) 的能力；
+  2. 模块结构：
+     - `schemas.py`: 定义 `claude_code_exec` 与 `codex_exec` 强类型工具契约；
+     - `git_tracker.py`: 提取执行前后 `git status --porcelain` 与 `git diff --stat` 差异，保障工作区变更可审计；
+     - `runner.py`: 封装非交互免挂死运行、超时防护、退出码检测与敏感 Key/Token 自动脱敏；
+     - `__init__.py`: 注册原生工具并新增 `/claude` 与 `/codex` 斜杠命令；
+     - `plugin.yaml`: 声明插件元数据并显式标注 `provides_tools`；
+  3. 配套编写 9 个单元测试用例并通过全量绿灯验证；
+  4. 创建并激活配套调度技能 `external-agents`；
+  5. 在 Hermes 生产配置 `~/.hermes/config.yaml` 与脱敏配置中正式激活该插件，并通过 `hermes plugins doctor` 校验通过。
+- 变更范围: `hermes/config.yaml`, `hermes/plugins/external-agents/`, `docs/superpowers/specs/2026-09-30-external-agents-plugin-design.md`, `ITERATION.md`
+
 ## 2026-09-29 10:18:00 +0800 - feat(hermes): integrate and enforce Superpowers intent clarification hard-gate
 
 - 项目: `hermes-local-agent-configs`
