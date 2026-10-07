@@ -30,6 +30,20 @@
   4. 强制在面对任何新功能开发、修改已有行为或目标不明确任务时，开工前严禁直接写入代码，必须先激活流程技能并获得用户明确确认。
 - 变更范围: `hermes/SOUL.md`, `hermes/config.yaml`, `scripts/superpowers-intent-gate.py`
 
+## 2026-10-07 09:45:00 +0800 - refactor(hermes): enforce 2-3 paragraph blank-line separation for tool calls, ban single-line grouping
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 仅限 Hermes 作用域，重构 `SOUL.md` 与用户画像 `USER.md` 中的工具调用排版与透明度铁律：
+     - 强制每次调用工具前面向用户的文本必须严格通过换行空行分成 2~3 个独立段落呈现；
+     - 绝对禁止压缩在单一行内，保证视觉结构清晰与阅读呼吸感；
+     - 坚决杜绝任何形式的数字序号（如 1/2/3、①/②/③、第一/第二等）；
+     - 坚决杜绝“上步”、“上一步”、“上轮”、“思考推导：”、“本步动作：”等死板八股前缀；
+  2. 范围严格限定在 Hermes，待用户验证确认后再视情况推广至 Claude 与 Codex；
+  3. 严格遵循安全红线与开工门禁，不执行向远端的 push 操作。
+- 变更范围: `hermes/SOUL.md`, `hermes/memories/USER.md`
+
 ## 2026-10-07 09:35:00 +0800 - refactor(all): eliminate numbered lists (123) and rigid 'last-step' tags in tool call transparency rules
 
 - 项目: `hermes-local-agent-configs`
