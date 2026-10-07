@@ -30,6 +30,19 @@
   4. 强制在面对任何新功能开发、修改已有行为或目标不明确任务时，开工前严禁直接写入代码，必须先激活流程技能并获得用户明确确认。
 - 变更范围: `hermes/SOUL.md`, `hermes/config.yaml`, `scripts/superpowers-intent-gate.py`
 
+## 2026-10-07 09:35:00 +0800 - refactor(all): eliminate numbered lists (123) and rigid 'last-step' tags in tool call transparency rules
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 重构 Claude Code (`CLAUDE.md`)、Codex (`instructions.md`) 与 Hermes (`SOUL.md`) 的工具调用交互规范：
+     - 显式禁止使用任何形式的数字序号（如 1/2/3、①/②/③、第一/第二等）；
+     - 显式禁止使用“上步……”、“上一步……”、“上轮……”、“思考推导：”、“本步动作：”等死板前缀；
+     - 转换为“纯自然语流”：自然陈述前序事实状态、交代因果推导，并以动词短语直述本步意图；
+  2. 保持非空输出红线（杜绝黑盒与哑巴调用），解决模型机械化照搬模板前缀的负面体验；
+  3. 同步更新 `USER.md` 长期用户偏好记忆与全套生产环境配置。
+- 变更范围: `claude/CLAUDE.md`, `codex/instructions.md`, `hermes/SOUL.md`, `hermes/memories/USER.md`
+
 ## 2026-09-28 16:05:00 +0800 - fix(claude): configure instructionFiles to claude-md in settings.json to silence fallback notice
 
 - 项目: `hermes-local-agent-configs`
