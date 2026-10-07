@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# gate: Superpowers 开工硬门禁 (Hard-Gate) 快捷控制开关
+# ==============================================================================
+set -euo pipefail
+
+FLAG_DIR="${HOME}/.hermes/flags"
+FLAG_FILE="${FLAG_DIR}/superpowers_gate.disabled"
+
+mkdir -p "${FLAG_DIR}"
+
+usage() {
+    echo "用法: gate [on|off|status]"
+    echo ""
+    echo "选项:"
+    echo "  on      开启硬门禁 (每轮对话自动注入 Superpowers 刹车与确认铁律)"
+    echo "  off     关闭硬门禁 (解除每轮前置刹车注入，恢复自由直接执行模式)"
+    echo "  status  查看当前硬门禁开关状态"
+    exit 1
+}
+
+case "${1:-status}" in
+    on)
+        rm -f "${FLAG_FILE}"
+        echo "✅ Superpowers 开工硬门禁已【开启】(Hard-Gate ENABLED)"
+        echo "   -> 动刀前必须方案先行并等待确认。"
+        ;;
+    off)
+        touch "${FLAG_FILE}"
+        echo "⚡ Superpowers 开工硬门禁已【关闭】(Hard-Gate DISABLED)"
+        echo "   -> 已解除每轮前置刹车注入，允许自主直接交付。"
+        ;;
+    status)
+        if [ -f "${FLAG_FILE}" ]; then
+            echo "⚡ 当前状态: 【已关闭】(DISABLED) - 未注入硬门禁"
+        else
+            echo "✅ 当前状态: 【已开启】(ENABLED)  - 每轮自动注入硬门禁"
+        fi
+        ;;
+    *)
+        usage
+        ;;
+esac

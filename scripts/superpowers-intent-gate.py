@@ -4,6 +4,9 @@ Injects high-priority intent clarification and hard-gate instructions before eac
 """
 import sys
 import json
+from pathlib import Path
+
+FLAG_FILE = Path.home() / ".hermes" / "flags" / "superpowers_gate.disabled"
 
 def main():
     try:
@@ -12,6 +15,11 @@ def main():
             _ = json.loads(raw)
     except Exception:
         pass
+
+    # 若检测到禁用标志文件，则跳过注入，直接返回空 JSON
+    if FLAG_FILE.exists():
+        print(json.dumps({}, ensure_ascii=False))
+        return
 
     gate_context = (
         "【Superpowers 意图对齐与开工硬门禁 (Hard-Gate)】\n"

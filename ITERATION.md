@@ -2,6 +2,39 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-10-07 17:10:00 +0800 - feat(hermes): add 'gate' CLI switch for dynamic Superpowers hard-gate injection control
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 为 Hermes 的 Pre-LLM Hook (`superpowers-intent-gate.py`) 引入标志文件热检测机制（`~/.hermes/flags/superpowers_gate.disabled`）；
+  2. 编写并安装全局快捷命令 `/home/advancer/.local/bin/gate`，支持 `gate on`、`gate off`、`gate status` 极简管理；
+  3. `gate on` 保持严谨安全防护，每轮推理前自动注入 Superpowers 意图对齐与开工硬门禁；`gate off` 彻底解除前置刹车注入，允许自主高效直接交付；
+  4. 秒级热生效、零重启无感切换；严格遵守安全规范，本地提交，不向远端执行 push。
+- 变更范围: `scripts/superpowers-intent-gate.py`, `scripts/gate`, `ITERATION.md`
+
+## 2026-10-07 16:45:00 +0800 - feat(external-agents): upgrade Claude runner to native PTY-driven supervision
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 重构 `external-agents` 插件核心执行器 `runner.py`，将底层命令行管道全面重构为原生 PTY（伪终端）驱动模式；
+  2. 实现全生命周期执行状态监控，实时提取阶段标签（`started` / `thinking` / `executing_tools` / `completing` / `finished`）；
+  3. 自动剥离 ANSI 转义字符并进行密钥脱敏，结合 `git_tracker` 自动捕获任务执行前后的代码变更（`files_changed`, `diff_stat`, `diff_summary`）汇总至 Hermes；
+  4. 自动读取并对齐远程生产网关配置（`http://35.236.134.50:8317` 与 `gemini-3.8-flash[1M]`），根除协议畸形与网关记录污染风险；
+  5. 9/9 单元测试全量绿灯通过。
+- 变更范围: `hermes/plugins/external-agents/runner.py`, `ITERATION.md`
+
+## 2026-10-07 16:26:00 +0800 - feat(claude): initialize h2c bridge skill and settings for Hermes remote control
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 安装并集成 `hermes-to-claude` (h2c) 架构，打通 Hermes 通过 HTTP 控制 Claude Code 多实例能力；
+  2. 初始化 Claude Code 原生技能文件 `~/.claude/skills/h2c/SKILL.md`，修复 npm 拦截 postinstall 导致的 `No commands match "/h2c"` 缺失问题；
+  3. 完善 `~/.claude/settings.json` 的模型映射配置，增加 `gemini-3.8-flash-n` 兼容支持，保障底层流式数据解析通畅。
+- 变更范围: `claude/skills/h2c/SKILL.md`, `claude/settings.json`, `ITERATION.md`
+
 ## 2026-09-30 16:16:04 +0800 - feat(hermes): add external-agents plugin to orchestrate Claude Code and Codex
 
 - 项目: `hermes-local-agent-configs`
