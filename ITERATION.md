@@ -30,6 +30,18 @@
   4. 强制在面对任何新功能开发、修改已有行为或目标不明确任务时，开工前严禁直接写入代码，必须先激活流程技能并获得用户明确确认。
 - 变更范围: `hermes/SOUL.md`, `hermes/config.yaml`, `scripts/superpowers-intent-gate.py`
 
+## 2026-10-07 09:55:00 +0800 - feat(claude,codex): sync 2-3 paragraph blank-line separation rules to Claude and Codex
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 在 Hermes 验证效果闭环后，将“空行自然分段（2~3段）、严禁单行挤占、严禁123序号、严禁上步等八股标签”的交互规范全量同步推广至：
+     - Claude Code (`~/.claude/CLAUDE.md`)
+     - OpenAI Codex (`~/.codex/instructions.md`)
+  2. 保持跨 Agent（Hermes、Claude Code、Codex）工具调用透明度规范与排版审美的绝对统一；
+  3. 严格遵循版本安全规范，改动仅在本地安全提交，未经授权不向远端执行 git push。
+- 变更范围: `claude/CLAUDE.md`, `codex/instructions.md`
+
 ## 2026-10-07 09:45:00 +0800 - refactor(hermes): enforce 2-3 paragraph blank-line separation for tool calls, ban single-line grouping
 
 - 项目: `hermes-local-agent-configs`
