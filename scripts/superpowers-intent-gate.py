@@ -5,7 +5,7 @@ Supports:
   - Mode override via ~/.hermes/flags/gate_mode ('off', 'on', 'auto', default: 'auto')
   - In 'auto' mode:
       - Advanced models (opus, sonnet, gpt-4o, o1, o3, gpt-5, pro): inject only hard-gate (clean, no verbose tool formatting)
-      - Lighter/basic models (flash, mini, qwen, etc.): inject both hard-gate + tool formatting transparency rules
+      - Basic/Flash models (Gemini Flash 全系列等小模型): 自动全量注入硬门禁 + 工具排版透明规范（专为 Flash 防黑盒设计）
 """
 import sys
 import json
@@ -31,6 +31,7 @@ TOOL_FORMAT_CONTEXT = (
 )
 
 # 高等智能模型关键字（命中时自动静默排版约束）
+# 铁律：严禁包含 flash！Gemini 全系列 flash 模型全部纳入低级模型，本输出约束专为他而生！
 ADVANCED_MODEL_KEYWORDS = [
     "opus",
     "sonnet",
@@ -38,13 +39,10 @@ ADVANCED_MODEL_KEYWORDS = [
     "gpt-5",
     "o1",
     "o3",
-    "gemini-1.5-pro",
-    "gemini-2.5-pro",
     "pro",
 ]
 
 def get_current_mode() -> str:
-    # 兼容历史 disabled 标记
     if DISABLED_FILE.exists():
         return "off"
     if MODE_FILE.exists():
@@ -60,6 +58,9 @@ def is_advanced_model(model_name: str) -> bool:
     if not model_name:
         return False
     lower_name = model_name.lower()
+    # 铁律：所有包含 flash 的模型（包括 gemini-3.8-flash 等）全部一票否决，归入需要排版约束的基础模型！
+    if "flash" in lower_name:
+        return False
     return any(kw in lower_name for kw in ADVANCED_MODEL_KEYWORDS)
 
 def main():
@@ -86,12 +87,12 @@ def main():
         print(json.dumps({"context": combined}, ensure_ascii=False))
         return
 
-    # 默认 auto 自适应模式：根据模型智商分流
+    # auto 自适应模式：根据模型智商分流
     if is_advanced_model(model_name):
-        # 高等模型：仅保留硬门禁防擅自修改，静默排版格式
+        # 高等模型 (Opus / Sonnet / GPT-4o 等): 仅保留硬门禁防擅改，自动静默排版格式
         print(json.dumps({"context": HARD_GATE_CONTEXT}, ensure_ascii=False))
     else:
-        # 轻量/普通模型：注入全套规则防黑盒
+        # Gemini Flash 全系列等基础模型: 自动全量注入排版规范，防黑盒哑巴调用！
         combined = f"{HARD_GATE_CONTEXT}\n\n{TOOL_FORMAT_CONTEXT}"
         print(json.dumps({"context": combined}, ensure_ascii=False))
 

@@ -1,0 +1,4 @@
+name: gate-control
+version: 1.0.0
+description: "Superpowers hard-gate and tool call formatting toggle command (/gate)"
+author: "advancer"

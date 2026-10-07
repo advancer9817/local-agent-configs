@@ -2,6 +2,17 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-10-07 17:50:00 +0800 - fix(hermes): register native /gate plugin command and classify Gemini Flash as constrained model
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. **Gemini Flash 模型归类校准**：遵循用户铁律，将 Gemini Flash 全系列模型显式从免排版高级白名单中完全剔除，严格归入“基础/必须受排版约束模型”；确立本排版透明约束专为 Gemini Flash 防黑盒哑巴调用而生，在 AUTO 模式下对 Flash 强制全量注入规范，仅对真实高智力推理模型（Opus/Sonnet/GPT-4o/Pro）静默排版；
+  2. **解决桌面端无 /gate 指令根因**：查明 Hermes 桌面客户端 `slash.exec` 不执行静态 `quick_commands`，仅识别官方 Plugins/Skills 的内核限制。正统落地 `gate-control` 原生插件（`ctx.register_command("gate")`），在桌面端注册一等公民 Slash Command；
+  3. **交互体验闭环**：在桌面端输入 `/gate` 支持自动补全、传参（`/gate off`、`/gate on`、`/gate auto`、`/gate status`）以及无参数一键 Toggle 快速翻转模式；
+  4. 现场 Python 句柄与 Hook 模型双向全量验证绿灯通过；本地提交，严格遵守安全红线不向远端 push。
+- 变更范围: `plugins/gate-control/`, `scripts/superpowers-intent-gate.py`, `scripts/gate`, `ITERATION.md`
+
 ## 2026-10-07 17:30:00 +0800 - feat(hermes): deploy Hybrid Model-Sensing & Quick Command Router for rules injection
 
 - 项目: `hermes-local-agent-configs`
