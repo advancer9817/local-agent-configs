@@ -2,6 +2,22 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-10-07 17:30:00 +0800 - feat(hermes): deploy Hybrid Model-Sensing & Quick Command Router for rules injection
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. **架构彻底解耦**：将死板的“工具调用三段式排版规范”从静态 `SOUL.md` 中完全移出，使 System Prompt 保持纯净底色（中文、安全红线、交付路径）；
+  2. **智能中枢 Hook 升级**：`superpowers-intent-gate.py` 全面接管排版格式与硬门禁，实现“三态控制 + 模型智商白名单自适应分流”：
+     - `AUTO` 模式（默认）：检测到高等智能模型（`Opus` / `Sonnet` / `GPT-4o` / `Pro` 等）自动静默排版废话（仅保留硬门禁）；普通小模型自动补全排版规范防黑盒；
+     - `OFF` 模式：强制注入 0 字符，彻底放飞直接交付；
+     - `ON` 模式：所有模型强制注入硬门禁 + 工具排版规范；
+  3. **快捷交互全覆盖**：
+     - 在 `config.yaml` 注册原生 `quick_commands`：支持在桌面端聊天框通过 `/gate`、`/gate-auto`、`/gate-off`、`/gate-on` 秒级热切换，零 Token 损耗；
+     - 全局终端命令 `/home/advancer/.local/bin/gate` 同步升级支持三态指令与状态面板；
+  4. 现场 4 项核心测试全量通过；本地提交，严格遵守安全红线不向远端 push。
+- 变更范围: `hermes/SOUL.md`, `scripts/superpowers-intent-gate.py`, `scripts/gate`, `ITERATION.md`
+
 ## 2026-10-07 17:10:00 +0800 - feat(hermes): add 'gate' CLI switch for dynamic Superpowers hard-gate injection control
 
 - 项目: `hermes-local-agent-configs`

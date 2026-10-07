@@ -1,41 +1,82 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# gate: Superpowers 开工硬门禁 (Hard-Gate) 快捷控制开关
+# gate: Superpowers 开工硬门禁与工具排版智能中枢控制开关
 # ==============================================================================
 set -euo pipefail
 
 FLAG_DIR="${HOME}/.hermes/flags"
-FLAG_FILE="${FLAG_DIR}/superpowers_gate.disabled"
+MODE_FILE="${FLAG_DIR}/gate_mode"
+DISABLED_FILE="${FLAG_DIR}/superpowers_gate.disabled"
 
 mkdir -p "${FLAG_DIR}"
 
 usage() {
-    echo "用法: gate [on|off|status]"
+    echo "用法: gate [auto|off|on|status]"
     echo ""
     echo "选项:"
-    echo "  on      开启硬门禁 (每轮对话自动注入 Superpowers 刹车与确认铁律)"
-    echo "  off     关闭硬门禁 (解除每轮前置刹车注入，恢复自由直接执行模式)"
-    echo "  status  查看当前硬门禁开关状态"
+    echo "  auto    智能自适应模式 (默认推荐: 高级模型自动免排版废话，轻量模型注入排版防黑盒)"
+    echo "  off     强制全关闭 (0 字符注入，彻底解除前置刹车与排版约束，自由放飞)"
+    echo "  on      强制全开启 (强制注入开工硬门禁 + 工具排版规范)"
+    echo "  status  查看当前控制模式与各模型分流策略"
     exit 1
 }
 
-case "${1:-status}" in
-    on)
-        rm -f "${FLAG_FILE}"
-        echo "✅ Superpowers 开工硬门禁已【开启】(Hard-Gate ENABLED)"
-        echo "   -> 动刀前必须方案先行并等待确认。"
+cmd="${1:-status}"
+
+case "${cmd}" in
+    auto)
+        rm -f "${DISABLED_FILE}"
+        echo "auto" > "${MODE_FILE}"
+        echo "🤖 门禁与排版规则已切换为【AUTO 智能自适应模式】(默认推荐)"
+        echo "   -> 高等模型 (Opus / Sonnet / GPT-4o 等): 仅保留硬门禁，自动静默排版废话"
+        echo "   -> 轻量模型 (Flash / Mini / Qwen 等): 自动全量注入排版规范，防黑盒哑巴调用"
         ;;
     off)
-        touch "${FLAG_FILE}"
-        echo "⚡ Superpowers 开工硬门禁已【关闭】(Hard-Gate DISABLED)"
-        echo "   -> 已解除每轮前置刹车注入，允许自主直接交付。"
+        rm -f "${DISABLED_FILE}"
+        echo "off" > "${MODE_FILE}"
+        echo "⚡ 门禁与排版规则已【强制全关闭】(FORCE DISABLED)"
+        echo "   -> 每轮注入 0 字符，彻底解除前置刹车与排版格式约束，自主直接交付"
+        ;;
+    on)
+        rm -f "${DISABLED_FILE}"
+        echo "on" > "${MODE_FILE}"
+        echo "🛡️ 门禁与排版规则已【强制全开启】(FORCE ENABLED)"
+        echo "   -> 无论任何模型，每轮强制注入硬门禁 + 工具空行自然分段透明规范"
         ;;
     status)
-        if [ -f "${FLAG_FILE}" ]; then
-            echo "⚡ 当前状态: 【已关闭】(DISABLED) - 未注入硬门禁"
-        else
-            echo "✅ 当前状态: 【已开启】(ENABLED)  - 每轮自动注入硬门禁"
+        current_mode="auto"
+        if [ -f "${DISABLED_FILE}" ]; then
+            current_mode="off"
+        elif [ -f "${MODE_FILE}" ]; then
+            val="$(cat "${MODE_FILE}" 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            if [ -n "${val}" ]; then
+                current_mode="${val}"
+            fi
         fi
+
+        echo "=================================================="
+        echo "  Hermes 门禁与工具排版智能中枢状态汇报"
+        echo "=================================================="
+        case "${current_mode}" in
+            auto)
+                echo "📊 当前运行模式: 【AUTO 智能自适应模式】(推荐)"
+                echo "   • 高等模型 (Opus / Sonnet / GPT-4o / Pro 等):"
+                echo "     - Superpowers 开工硬门禁: ✅ 生效"
+                echo "     - 工具调用排版约束:       ❌ 自动静默 (保持高信噪比，无多余废话)"
+                echo "   • 轻量/普通模型 (Flash / Mini / Qwen 等):"
+                echo "     - Superpowers 开工硬门禁: ✅ 生效"
+                echo "     - 工具调用排版约束:       ✅ 自动注入 (空行分段，杜绝黑盒)"
+                ;;
+            off)
+                echo "⚡ 当前运行模式: 【OFF 强制全关闭】"
+                echo "   - 所有提示词注入: ❌ 0 字符 (自由直接交付)"
+                ;;
+            on)
+                echo "🛡️ 当前运行模式: 【ON 强制全开启】"
+                echo "   - 所有模型强制注入: ✅ 硬门禁 + ✅ 工具排版透明规范"
+                ;;
+        esac
+        echo "=================================================="
         ;;
     *)
         usage
