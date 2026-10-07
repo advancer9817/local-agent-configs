@@ -2,6 +2,30 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-10-07 18:20:00 +0800 - feat(hermes): register /gate as native skill for desktop autocomplete popover
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. **彻底解决桌面端输入 /gate 无法补全的问题**：
+     - 排查 Hermes Desktop 前端补全机制 `complete.slash` 与 `SlashCommandCompleter`，确认桌面端输入框的 `/` 浮窗联想来源仅为内置 COMMANDS 与注册的 SKILLS（Plugins 不参与输入框实时词条联想）；
+     - 正统创建官方技能 `~/.hermes/skills/gate/SKILL.md`，使 `/gate` 拥有与 `/codex` 完全同级的 ⚡ 官方技能联想入口，彻底在桌面端输入框浮窗中就绪；
+  2. **双轨保障**：
+     - 桌面端输入 `/gate` 享有 ⚡ 自动补全并在敲回车时直接触发执行状态翻转与报告输出；
+     - 终端与脚本仍可随时调用全局 `/home/advancer/.local/bin/gate`；
+  3. 经 `hermes skills list` 与 `get_interactive_skill_commands()` 验证，`/gate` 已 100% 成为系统原生技能命令；本地提交，严格遵守安全红线不向远端 push。
+- 变更范围: `hermes/skills/gate/SKILL.md`, `ITERATION.md`
+
+## 2026-10-07 18:10:00 +0800 - fix(codex,mcore): fix stop hook envelope schema and inject Gemini model metadata
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. **根治 Stop Hook 报错**：排查并修正 `memorycore` 项目源码 `mcore-client/mcore-client.js` 与运行时边车中的 `handleHookIngest` 响应体，将裸对象包装为包含 `hookSpecificOutput: { hookEventName: 'Stop' }` 的合规信封，彻底消除 Codex 与其它 Agent 执行时报出 `invalid stop hook JSON output` 的问题；
+  2. **消除 Codex 缺失模型元数据告警**：在 WSL 端与 Windows 宿主机双端的 `models_cache.json` 中注入 `gemini-3.8-flash` 与 `gemini-3.8-flash[1M]` 专属元数据项，支持 4 档推理级别（low/medium/high/xhigh），消除黄色 `Model metadata not found` 警告；
+  3. **环境与服务热重载**：重启 `mcore-client` 本地守护进程，测试真实调用验证通过；同步配置至脱敏仓库。
+- 变更范围: `codex/models_cache.json`, `memorycore/mcore-client/mcore-client.js`, `ITERATION.md`
+
 ## 2026-10-07 17:50:00 +0800 - fix(hermes): register native /gate plugin command and classify Gemini Flash as constrained model
 
 - 项目: `hermes-local-agent-configs`
