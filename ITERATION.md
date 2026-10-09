@@ -2,6 +2,17 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-10-09 22:05:00 +0800 - feat(codex): set default permissions to full-access (danger-full-access + never approval)
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 在 Codex 全局配置 `~/.codex/config.toml` 及纳管模板 `codex/config.toml` 中配置 `sandbox_mode = "danger-full-access"`；
+  2. 配置 `approval_policy = "never"`，将 Codex 原生权限默认选项固化为 Full Access；
+  3. 解除跨工作区读写与外网限制，消除多智能体无人值守编排（如 FARM）时的权限确认阻塞；
+  4. 经 `codex doctor` 诊断实测验证，沙箱状态已呈现 `unrestricted fs + enabled network · approval Never`。
+- 变更范围: `codex/config.toml`
+
 ## 2026-09-28 16:05:00 +0800 - fix(claude): configure instructionFiles to claude-md in settings.json to silence fallback notice
 
 - 项目: `hermes-local-agent-configs`
@@ -1129,3 +1140,37 @@ git -C /home/advancer/project/hermes-local-agent-configs status
 ### 影响范围
 - `claude/scripts/statusline.sh`
 - `ITERATION.md`
+
+---
+
+## 2026-10-09T22:00:00+0800 — Fix Statusline Time Stalling & Sub-step Truncation (Align 112s vs 24s)
+
+### 目的
+修复 statusLine 在多工具复杂任务中因频繁缓存覆盖导致的时间停滞以及将总任务耗时（如 112s / 1m53s）截断误计为最后单步 API 耗时（24s）的严重缺陷。
+
+### 变更摘要
+1. **真实用户任务起点定位** (`claude/scripts/statusline.sh`):
+   - 过滤工具返回消息 (`tool_result`)，准确定位当前用户原始 Prompt 的真实时间戳；
+   - 任务进行中时基于挂钟时间 (`now - prompt_time`) 实时动态递增，彻底消除时间停滞不前的问题；
+   - 任务完成时精准锚定到终态事件时间戳，输出完整的端到端总耗时 (`⏳1m53s` / 112.9s)，与编排面板及终端日志实现完全一致。
+2. **多步骤产出真实 TPS** (`claude/scripts/statusline.sh`):
+   - 汇总整个任务区间内所有回复的 `output_tokens` 并结合全任务耗时计算真实平均吞吐。
+
+### 影响范围
+- `claude/scripts/statusline.sh`
+- `ITERATION.md`
+
+
+---
+
+## 2026-10-09T22:35:00+0800 — Authoritative Turn Duration from Claude Engine & Session Auto-Discovery
+
+### 目的
+彻底解决 Claude 状态栏 (statusline) 在多步复合任务完成后耗时少记（例如实际 112s / 1m53s 却仅记录 24s）的缺陷，将耗时对齐到 Claude 原生内核级记录的标准单轮耗时。
+
+### 变更摘要
+1. **优先采信官方 turn_duration 耗时** (`claude/scripts/statusline.sh`):
+   - 解析 Claude Code 转录中系统级终态事件 `type="system", subtype="turn_duration"` 的 `durationMs` 字段；
+   - 彻底避免任何多步骤执行过程中的局部截断或差值覆盖，直接呈现毫秒级精准的端到端单轮总耗时（如 113079ms -> `⏳1m53s`）。
+2. **转录文件自动溯源** (`claude/scripts/statusline.sh`):
+   - 增加 `session_id` 自动索引机制，当环境未显式透传 `transcript_path` 时自动定位会话转录日志，保障高可用。

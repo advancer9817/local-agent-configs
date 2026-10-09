@@ -67,9 +67,10 @@ if [ -n "$model" ]; then
   add_status_seg $model_vlen "$model_str"
 fi
 
-# Metrics: Turn duration & Real Output TPS
+# Metrics: Real Task Duration & Output TPS
 metrics_json=$(python3 -c '
-import sys, os, json
+import sys, os, glob, json
+from datetime import datetime, timezone
 
 def compute():
     try:
@@ -79,83 +80,98 @@ def compute():
 
     session_id = inp.get("session_id", "default")
     transcript_path = inp.get("transcript_path", "")
-    total_dur_ms = inp.get("cost", {}).get("total_duration_ms", 0)
-    api_ms = inp.get("cost", {}).get("total_api_duration_ms", 0)
+    fallback_dur_ms = inp.get("cost", {}).get("total_duration_ms", 0)
 
-    unique_msgs = {}
+    if (not transcript_path or not os.path.isfile(transcript_path)) and session_id != "default":
+        matches = glob.glob(f"/home/advancer/.claude/projects/*/{session_id}.jsonl")
+        if matches:
+            transcript_path = matches[0]
+
+    def parse_iso(ts):
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    last_prompt_dt = None
+    last_event_dt = None
+    task_done = False
+    task_msgs = {}
+    official_dur_ms = None
+
     if transcript_path and os.path.isfile(transcript_path):
         try:
             with open(transcript_path, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
-                    if "\"output_tokens\":" in line:
-                        try:
-                            d = json.loads(line)
+                    try:
+                        d = json.loads(line)
+                    except Exception:
+                        continue
+
+                    ts_str = d.get("timestamp")
+                    dt = parse_iso(ts_str) if ts_str else None
+                    if dt:
+                        last_event_dt = dt
+
+                    dtype = d.get("type")
+                    if dtype == "user":
+                        msg = d.get("message", {})
+                        content = msg.get("content", "")
+                        is_tool = False
+                        if isinstance(content, list):
+                            is_tool = any(isinstance(c, dict) and c.get("type") == "tool_result" for c in content)
+                        if not is_tool and dt:
+                            last_prompt_dt = dt
+                            task_done = False
+                            task_msgs = {}
+                            official_dur_ms = None
+
+                    if dtype == "system":
+                        task_done = True
+                        if d.get("subtype") == "turn_duration":
+                            d_ms = d.get("durationMs")
+                            if d_ms and d_ms > 0:
+                                official_dur_ms = d_ms
+
+                    if last_prompt_dt and dt and dt >= last_prompt_dt:
+                        if "\"output_tokens\":" in line:
                             msg = d.get("message", {})
                             mid = msg.get("id")
                             u = msg.get("usage", {})
                             if mid and "output_tokens" in u:
-                                unique_msgs[mid] = u["output_tokens"]
-                        except:
-                            pass
-        except:
+                                task_msgs[mid] = u["output_tokens"]
+        except Exception:
             pass
 
-    cw = inp.get("context_window", {})
-    total_out = sum(unique_msgs.values()) if unique_msgs else (cw.get("total_output_tokens", 0) or cw.get("current_usage", {}).get("output_tokens", 0))
+    now = datetime.now(timezone.utc)
+    dur_s = 0
 
-    cache_file = f"/tmp/.claude_metrics_{session_id}.json"
-    cached = {}
-    if os.path.isfile(cache_file):
-        try:
-            with open(cache_file, "r") as f:
-                cached = json.load(f)
-        except:
-            pass
-
-    prev_api_ms = cached.get("api_ms", 0)
-    prev_out = cached.get("out_tokens", 0)
-    prev_tps = cached.get("tps", 0.0)
-    prev_total_dur = cached.get("total_dur_ms", 0)
-
-    delta_api_ms = api_ms - prev_api_ms
-    delta_out = total_out - prev_out
-
-    if delta_api_ms >= 500 and delta_out > 0:
-        tps = (delta_out * 1000.0) / delta_api_ms
-    elif prev_tps > 0:
-        tps = prev_tps
-    elif api_ms > 0 and total_out > 0:
-        tps = (total_out * 1000.0) / api_ms
+    if official_dur_ms:
+        dur_s = max(1, int(round(official_dur_ms / 1000.0)))
+    elif last_prompt_dt:
+        if task_done and last_event_dt:
+            dur_s = max(1, int(round((last_event_dt - last_prompt_dt).total_seconds())))
+        else:
+            dur_s = max(1, int(round((now - last_prompt_dt).total_seconds())))
     else:
-        tps = 0.0
+        dur_s = int(round(fallback_dur_ms / 1000.0))
 
-    delta_dur_ms = total_dur_ms - prev_total_dur if (prev_total_dur > 0 and total_dur_ms >= prev_total_dur) else total_dur_ms
-    if delta_dur_ms <= 0:
-        delta_dur_ms = total_dur_ms
-
-    cached_data = {
-        "api_ms": api_ms,
-        "out_tokens": total_out,
-        "tps": round(tps, 1),
-        "total_dur_ms": total_dur_ms
-    }
-    try:
-        with open(cache_file, "w") as f:
-            json.dump(cached_data, f)
-    except:
-        pass
+    total_tokens = sum(task_msgs.values())
+    tps = 0.0
+    if dur_s > 0 and total_tokens > 0:
+        tps = round(total_tokens / float(dur_s), 1)
 
     return json.dumps({
-        "tps": round(tps, 1) if tps > 0 else 0.0,
-        "turn_dur_s": int(round(delta_dur_ms / 1000.0)),
-        "total_dur_s": int(round(total_dur_ms / 1000.0))
+        "dur_s": dur_s,
+        "tps": tps,
+        "is_running": not task_done
     })
 
 sys.stdout.write(compute())
 ' <<< "$input" 2>/dev/null)
 
 if [ -n "$metrics_json" ]; then
-  dur_s=$(echo "$metrics_json" | jq -r '.turn_dur_s // 0' 2>/dev/null || echo 0)
+  dur_s=$(echo "$metrics_json" | jq -r '.dur_s // 0' 2>/dev/null || echo 0)
   tps=$(echo "$metrics_json" | jq -r '.tps // 0' 2>/dev/null || echo 0)
 
   if (( dur_s > 0 )); then

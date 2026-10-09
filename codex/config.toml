@@ -3,6 +3,8 @@ model = "gpt-6-astra"
 disable_response_storage = true
 approvals_reviewer = "user"
 model_reasoning_effort = "high"
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
 
 [model_providers]
 [marketplaces.openai-bundled]
