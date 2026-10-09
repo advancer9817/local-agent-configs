@@ -1109,3 +1109,23 @@ git fetch origin
 ### 验证命令
 ```bash
 git -C /home/advancer/project/hermes-local-agent-configs status
+
+
+---
+
+## 2026-10-09T21:40:00+0800 — Fix Claude Statusline Incremental Turn Duration & Physical Output TPS
+
+### 目的
+修复 Claude Code statusLine 状态栏脚本在长驻留热会话（Farm 编排）环境下指标失真的问题，将上下文累计时间与上下文总 Token 除法替换为真实的单轮活跃耗时与模型生成物理 TPS。
+
+### 变更摘要
+1. **真实物理 TPS 计算** (`claude/scripts/statusline.sh`):
+   - 彻底废除将 Context Window 全量上下文输入/缓存 Token（80k+）除以 API 时间的虚高公式（原先导致 `2.64kt/s`）；
+   - 改为通过 transcript 增量去重统计实际模型输出 Token，除以轮次生成耗时，输出真实的物理吞吐速率（例如 `91.1 tps`）。
+2. **单轮活跃耗时校准** (`claude/scripts/statusline.sh`):
+   - 修复直接使用 `.cost.total_duration_ms` 导致长驻留工位显示整个会话生命周期（如 `⏳2m59s`、`⏳1h`）的缺陷；
+   - 追踪并计算单轮活跃任务耗时（如 `⏳31s`），与编排控制台遥测保持绝对一致。
+
+### 影响范围
+- `claude/scripts/statusline.sh`
+- `ITERATION.md`

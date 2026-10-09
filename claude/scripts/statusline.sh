@@ -67,50 +67,112 @@ if [ -n "$model" ]; then
   add_status_seg $model_vlen "$model_str"
 fi
 
-# Elapsed
-elapsed_ms=$(echo "$input" | jq -r '.cost.total_duration_ms // empty')
-if [ -n "$elapsed_ms" ] && [ "${elapsed_ms%.*}" -gt 0 ] 2>/dev/null; then
-  elapsed_s=$(( ${elapsed_ms%.*} / 1000 ))
-  if (( elapsed_s < 60 )); then
-    elapsed_str="⏳${elapsed_s}s"
-  elif (( elapsed_s < 3600 )); then
-    elapsed_str="⏳$(( elapsed_s / 60 ))m$(printf '%02d' $(( elapsed_s % 60 )))s"
-  else
-    elapsed_str="⏳$(( elapsed_s / 3600 ))h$(printf '%02d' $(( elapsed_s % 3600 / 60 )))m"
-  fi
-  add_status_seg ${#elapsed_str} "${ESC}[36m${elapsed_str}${ESC}[0m"
-fi
+# Metrics: Turn duration & Real Output TPS
+metrics_json=$(python3 -c '
+import sys, os, json
 
-# Total TPS (Total Tokens per second based on API duration)
-tps_val=$(echo "$input" | jq -r '
-  .context_window as $cw |
-  ($cw.current_usage // {}) as $u |
-  (($u.input_tokens // 0) + ($u.output_tokens // 0) + ($u.cache_creation_input_tokens // 0) + ($u.cache_read_input_tokens // 0)) as $from_usage |
-  (($cw.total_input_tokens // 0) + ($cw.total_output_tokens // 0)) as $from_totals |
-  (if ($cw.context_window_size // 0) > 0 and ($cw.used_percentage // 0) > 0 then
-    ($cw.context_window_size * $cw.used_percentage / 100 | round)
-   else 0 end) as $from_pct |
-  ([$from_usage, $from_totals, $from_pct] | max) as $total_tokens |
+def compute():
+    try:
+        inp = json.load(sys.stdin)
+    except Exception:
+        return "{}"
 
-  # API duration in ms (pure inference and network streaming time)
-  (.cost.total_api_duration_ms // 0) as $api_ms |
+    session_id = inp.get("session_id", "default")
+    transcript_path = inp.get("transcript_path", "")
+    total_dur_ms = inp.get("cost", {}).get("total_duration_ms", 0)
+    api_ms = inp.get("cost", {}).get("total_api_duration_ms", 0)
 
-  if $total_tokens > 0 and $api_ms > 0 then
-    ($total_tokens * 1000 / $api_ms) as $rate |
-    if $rate >= 10000 then
-      (($rate / 100 | round) / 10 | tostring) + "k"
-    elif $rate >= 1000 then
-      (($rate / 10 | round) / 100 | tostring) + "k"
+    unique_msgs = {}
+    if transcript_path and os.path.isfile(transcript_path):
+        try:
+            with open(transcript_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if "\"output_tokens\":" in line:
+                        try:
+                            d = json.loads(line)
+                            msg = d.get("message", {})
+                            mid = msg.get("id")
+                            u = msg.get("usage", {})
+                            if mid and "output_tokens" in u:
+                                unique_msgs[mid] = u["output_tokens"]
+                        except:
+                            pass
+        except:
+            pass
+
+    cw = inp.get("context_window", {})
+    total_out = sum(unique_msgs.values()) if unique_msgs else (cw.get("total_output_tokens", 0) or cw.get("current_usage", {}).get("output_tokens", 0))
+
+    cache_file = f"/tmp/.claude_metrics_{session_id}.json"
+    cached = {}
+    if os.path.isfile(cache_file):
+        try:
+            with open(cache_file, "r") as f:
+                cached = json.load(f)
+        except:
+            pass
+
+    prev_api_ms = cached.get("api_ms", 0)
+    prev_out = cached.get("out_tokens", 0)
+    prev_tps = cached.get("tps", 0.0)
+    prev_total_dur = cached.get("total_dur_ms", 0)
+
+    delta_api_ms = api_ms - prev_api_ms
+    delta_out = total_out - prev_out
+
+    if delta_api_ms >= 500 and delta_out > 0:
+        tps = (delta_out * 1000.0) / delta_api_ms
+    elif prev_tps > 0:
+        tps = prev_tps
+    elif api_ms > 0 and total_out > 0:
+        tps = (total_out * 1000.0) / api_ms
+    else:
+        tps = 0.0
+
+    delta_dur_ms = total_dur_ms - prev_total_dur if (prev_total_dur > 0 and total_dur_ms >= prev_total_dur) else total_dur_ms
+    if delta_dur_ms <= 0:
+        delta_dur_ms = total_dur_ms
+
+    cached_data = {
+        "api_ms": api_ms,
+        "out_tokens": total_out,
+        "tps": round(tps, 1),
+        "total_dur_ms": total_dur_ms
+    }
+    try:
+        with open(cache_file, "w") as f:
+            json.dump(cached_data, f)
+    except:
+        pass
+
+    return json.dumps({
+        "tps": round(tps, 1) if tps > 0 else 0.0,
+        "turn_dur_s": int(round(delta_dur_ms / 1000.0)),
+        "total_dur_s": int(round(total_dur_ms / 1000.0))
+    })
+
+sys.stdout.write(compute())
+' <<< "$input" 2>/dev/null)
+
+if [ -n "$metrics_json" ]; then
+  dur_s=$(echo "$metrics_json" | jq -r '.turn_dur_s // 0' 2>/dev/null || echo 0)
+  tps=$(echo "$metrics_json" | jq -r '.tps // 0' 2>/dev/null || echo 0)
+
+  if (( dur_s > 0 )); then
+    if (( dur_s < 60 )); then
+      elapsed_str="⏳${dur_s}s"
+    elif (( dur_s < 3600 )); then
+      elapsed_str="⏳$(( dur_s / 60 ))m$(printf '%02d' $(( dur_s % 60 )))s"
     else
-      (($rate * 10 | round) / 10 | tostring)
-    end
-  else
-    empty
-  end
-')
-if [ -n "$tps_val" ]; then
-  tps_str="⚡${tps_val}t/s"
-  add_status_seg ${#tps_str} "${ESC}[2;33m${tps_str}${ESC}[0m"
+      elapsed_str="⏳$(( dur_s / 3600 ))h$(printf '%02d' $(( dur_s % 3600 / 60 )))m"
+    fi
+    add_status_seg ${#elapsed_str} "${ESC}[36m${elapsed_str}${ESC}[0m"
+  fi
+
+  if [ -n "$tps" ] && [ "$tps" != "0" ] && [ "$tps" != "0.0" ]; then
+    tps_str="⚡${tps}t/s"
+    add_status_seg ${#tps_str} "${ESC}[2;33m${tps_str}${ESC}[0m"
+  fi
 fi
 
 # Lines changed
