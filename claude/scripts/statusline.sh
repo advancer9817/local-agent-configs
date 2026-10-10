@@ -67,50 +67,128 @@ if [ -n "$model" ]; then
   add_status_seg $model_vlen "$model_str"
 fi
 
-# Elapsed
-elapsed_ms=$(echo "$input" | jq -r '.cost.total_duration_ms // empty')
-if [ -n "$elapsed_ms" ] && [ "${elapsed_ms%.*}" -gt 0 ] 2>/dev/null; then
-  elapsed_s=$(( ${elapsed_ms%.*} / 1000 ))
-  if (( elapsed_s < 60 )); then
-    elapsed_str="⏳${elapsed_s}s"
-  elif (( elapsed_s < 3600 )); then
-    elapsed_str="⏳$(( elapsed_s / 60 ))m$(printf '%02d' $(( elapsed_s % 60 )))s"
-  else
-    elapsed_str="⏳$(( elapsed_s / 3600 ))h$(printf '%02d' $(( elapsed_s % 3600 / 60 )))m"
-  fi
-  add_status_seg ${#elapsed_str} "${ESC}[36m${elapsed_str}${ESC}[0m"
-fi
+# Metrics: Real Task Duration & Output TPS
+metrics_json=$(python3 -c '
+import sys, os, glob, json
+from datetime import datetime, timezone
 
-# Total TPS (Total Tokens per second based on API duration)
-tps_val=$(echo "$input" | jq -r '
-  .context_window as $cw |
-  ($cw.current_usage // {}) as $u |
-  (($u.input_tokens // 0) + ($u.output_tokens // 0) + ($u.cache_creation_input_tokens // 0) + ($u.cache_read_input_tokens // 0)) as $from_usage |
-  (($cw.total_input_tokens // 0) + ($cw.total_output_tokens // 0)) as $from_totals |
-  (if ($cw.context_window_size // 0) > 0 and ($cw.used_percentage // 0) > 0 then
-    ($cw.context_window_size * $cw.used_percentage / 100 | round)
-   else 0 end) as $from_pct |
-  ([$from_usage, $from_totals, $from_pct] | max) as $total_tokens |
+def compute():
+    try:
+        inp = json.load(sys.stdin)
+    except Exception:
+        return "{}"
 
-  # API duration in ms (pure inference and network streaming time)
-  (.cost.total_api_duration_ms // 0) as $api_ms |
+    session_id = inp.get("session_id", "default")
+    transcript_path = inp.get("transcript_path", "")
+    fallback_dur_ms = inp.get("cost", {}).get("total_duration_ms", 0)
 
-  if $total_tokens > 0 and $api_ms > 0 then
-    ($total_tokens * 1000 / $api_ms) as $rate |
-    if $rate >= 10000 then
-      (($rate / 100 | round) / 10 | tostring) + "k"
-    elif $rate >= 1000 then
-      (($rate / 10 | round) / 100 | tostring) + "k"
+    if (not transcript_path or not os.path.isfile(transcript_path)) and session_id != "default":
+        matches = glob.glob(f"/home/advancer/.claude/projects/*/{session_id}.jsonl")
+        if matches:
+            transcript_path = matches[0]
+
+    def parse_iso(ts):
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    last_prompt_dt = None
+    last_event_dt = None
+    task_done = False
+    task_msgs = {}
+    official_dur_ms = None
+
+    if transcript_path and os.path.isfile(transcript_path):
+        try:
+            with open(transcript_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    try:
+                        d = json.loads(line)
+                    except Exception:
+                        continue
+
+                    ts_str = d.get("timestamp")
+                    dt = parse_iso(ts_str) if ts_str else None
+                    if dt:
+                        last_event_dt = dt
+
+                    dtype = d.get("type")
+                    if dtype == "user":
+                        msg = d.get("message", {})
+                        content = msg.get("content", "")
+                        is_tool = False
+                        if isinstance(content, list):
+                            is_tool = any(isinstance(c, dict) and c.get("type") == "tool_result" for c in content)
+                        if not is_tool and dt:
+                            last_prompt_dt = dt
+                            task_done = False
+                            task_msgs = {}
+                            official_dur_ms = None
+
+                    if dtype == "system":
+                        task_done = True
+                        if d.get("subtype") == "turn_duration":
+                            d_ms = d.get("durationMs")
+                            if d_ms and d_ms > 0:
+                                official_dur_ms = d_ms
+
+                    if last_prompt_dt and dt and dt >= last_prompt_dt:
+                        if "\"output_tokens\":" in line:
+                            msg = d.get("message", {})
+                            mid = msg.get("id")
+                            u = msg.get("usage", {})
+                            if mid and "output_tokens" in u:
+                                task_msgs[mid] = u["output_tokens"]
+        except Exception:
+            pass
+
+    now = datetime.now(timezone.utc)
+    dur_s = 0
+
+    if official_dur_ms:
+        dur_s = max(1, int(round(official_dur_ms / 1000.0)))
+    elif last_prompt_dt:
+        if task_done and last_event_dt:
+            dur_s = max(1, int(round((last_event_dt - last_prompt_dt).total_seconds())))
+        else:
+            dur_s = max(1, int(round((now - last_prompt_dt).total_seconds())))
+    else:
+        dur_s = int(round(fallback_dur_ms / 1000.0))
+
+    total_tokens = sum(task_msgs.values())
+    tps = 0.0
+    if dur_s > 0 and total_tokens > 0:
+        tps = round(total_tokens / float(dur_s), 1)
+
+    return json.dumps({
+        "dur_s": dur_s,
+        "tps": tps,
+        "is_running": not task_done
+    })
+
+sys.stdout.write(compute())
+' <<< "$input" 2>/dev/null)
+
+if [ -n "$metrics_json" ]; then
+  dur_s=$(echo "$metrics_json" | jq -r '.dur_s // 0' 2>/dev/null || echo 0)
+  tps=$(echo "$metrics_json" | jq -r '.tps // 0' 2>/dev/null || echo 0)
+
+  if (( dur_s > 0 )); then
+    if (( dur_s < 60 )); then
+      elapsed_str="⏳${dur_s}s"
+    elif (( dur_s < 3600 )); then
+      elapsed_str="⏳$(( dur_s / 60 ))m$(printf '%02d' $(( dur_s % 60 )))s"
     else
-      (($rate * 10 | round) / 10 | tostring)
-    end
-  else
-    empty
-  end
-')
-if [ -n "$tps_val" ]; then
-  tps_str="⚡${tps_val}t/s"
-  add_status_seg ${#tps_str} "${ESC}[2;33m${tps_str}${ESC}[0m"
+      elapsed_str="⏳$(( dur_s / 3600 ))h$(printf '%02d' $(( dur_s % 3600 / 60 )))m"
+    fi
+    add_status_seg ${#elapsed_str} "${ESC}[36m${elapsed_str}${ESC}[0m"
+  fi
+
+  if [ -n "$tps" ] && [ "$tps" != "0" ] && [ "$tps" != "0.0" ]; then
+    tps_str="⚡${tps}t/s"
+    add_status_seg ${#tps_str} "${ESC}[2;33m${tps_str}${ESC}[0m"
+  fi
 fi
 
 # Lines changed

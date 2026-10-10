@@ -1260,3 +1260,38 @@ git fetch origin
 ### 验证命令
 ```bash
 git -C /home/advancer/project/hermes-local-agent-configs status
+```
+
+---
+
+## 2026-10-10T02:30:00Z — Purge h2c Skill, Update Config Repo Statusline Engine & Security Settings
+
+### 目的
+依据配置库维护规范，彻底清理冗余的 h2c 技能资产，将状态栏全新权威耗时与 TPS 引擎持久化入库，并治理仓库中遗留的无效 Google Drive 路径与网关防打穿配置。
+
+### 变更摘要
+1. **彻底移除 h2c 技能** (`claude/skills/h2c/`):
+   - 从仓库与本地环境彻底删除 `h2c` 技能目录及定义，保持脚本与配置体系纯净，不纳入非标扩展。
+2. **更新配置库 statusline 权威引擎** (`claude/scripts/statusline.sh`):
+   - 更新入库官方内核级 `turn_duration` 毫秒级耗时解析逻辑，消除多步任务中的局部停滞与截断误计；
+   - 纳入基于 `session_id` 自动定位会话转录日志与全区间 `output_tokens` 真实 Output TPS 计算。
+3. **纠正配置库状态栏调用路径** (`claude/settings.json`):
+   - 彻底清除仓库中历史遗留的失效 Google Drive 路径（`gdrive/claude-shared/statusline.sh`）；
+   - 规范为本地标准调用并追加 WSL 环境容错重定向：`bash /home/advancer/.claude/statusline.sh 2>/dev/null`。
+4. **固化 Subagent 防击穿网关与脱敏规范** (`claude/settings.json`):
+   - 持久化 `CLAUDE_CODE_ENABLE_SUBAGENTS=0` 与 `CLAUDE_CODE_DISABLE_BACKGROUND_AGENTS=1`；
+   - 固化 modelPicker 配置并确保敏感 Token 严格使用脱敏占位。
+5. **完善动态缓存忽略规则** (`.gitignore`):
+   - 补充忽略 `models_cache.json` 及相关运行期临时缓存。
+
+### 影响范围
+- `claude/scripts/statusline.sh`
+- `claude/settings.json`
+- `.gitignore`
+- `ITERATION.md`
+
+### 验证命令
+```bash
+bash /home/advancer/.claude/statusline.sh <<< '{"cost":{"total_duration_ms":113000},"context_window":{"used_percentage":18}}'
+git -C /home/advancer/project/local-agent-configs status
+```

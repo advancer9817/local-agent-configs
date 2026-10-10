@@ -19,7 +19,8 @@
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK": "1",
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "gemini-3.8-flash[1M]",
+    "CLAUDE_CODE_ENABLE_SUBAGENTS": "0",
+    "CLAUDE_CODE_DISABLE_BACKGROUND_AGENTS": "1",
     "HTTPS_PROXY": "http://172.20.0.1:7890",
     "HTTP_PROXY": "http://172.20.0.1:7890",
     "LANG": "zh_CN.UTF-8",
@@ -79,15 +80,29 @@
       "url": "http://127.0.0.1:8318/mcp"
     }
   },
-  "model": "opus",
+  "model": "gemini-3.8-flash",
+  "modelPicker": {
+    "options": [
+      {
+        "model": "gemini-3.8-flash",
+        "label": "Gemini 3.8 Flash",
+        "behavesAs": "claude-3-7-sonnet-20250219"
+      },
+      {
+        "model": "gemini-3.8-flash-n",
+        "label": "Gemini 3.8 Flash Normal",
+        "behavesAs": "claude-3-7-sonnet-20250219"
+      }
+    ]
+  },
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
   "skipAutoPermissionPrompt": true,
   "skipDangerousModePermissionPrompt": true,
   "statusLine": {
-    "command": "bash /home/advancer/gdrive/claude-shared/statusline.sh",
-    "type": "command"
+    "type": "command",
+    "command": "bash /home/advancer/.claude/statusline.sh 2>/dev/null"
   },
   "theme": "dark-ansi",
   "verbose": false,
