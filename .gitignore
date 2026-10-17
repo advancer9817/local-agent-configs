@@ -2,6 +2,10 @@
 .env
 auth.json
 **/auth.json
+.hindsight-token
+**/.hindsight-token
+*-token
+*.secret
 state.db*
 *.db
 *.sqlite
@@ -11,4 +15,7 @@ cache/
 __pycache__/
 *.pyc
 .venv/
+.venv-handoff/
+.handoff/
+handoff/.lock
 venv/

@@ -2,6 +2,56 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-10-17 — feat(hermes,claude,codex): switch default memory backend to Hindsight
+
+### 目的
+
+将三个本地 Agent（Hermes / Claude Code / Codex）的默认长期记忆后端从 mcore 切换为 Hindsight（通过已暴露的公网 MCP 端点 `recall` / `retain` / `reflect`），mcore 保留为二线/兼容后端。本次仅镜像脱敏配置与脚本资产，不含任何凭据。
+
+### 变更范围
+
+- **新增 Hermes 插件** `hermes/plugins/hindsight-memory/`（`__init__.py` + `plugin.yaml`）：
+  - `pre_llm_call` 调 Hindsight `recall` 注入记忆上下文；
+  - `post_llm_call` 异步 `retain` 当轮问答为文档（服务端自行提取事实）；
+  - `on_session_end` 兜底：调 `hindsight-ingest.py` 将整段 transcript 作为文档 retain。
+  - 端点默认 `http://35.236.134.50:18888/mcp/mcore-active-snapshot/`，可用 `HINDSIGHT_MCP_URL` 覆盖；Bearer token 从 `~/.hermes/.hindsight-token`（权限 600，已入 `.gitignore`）读取，绝不硬编码/入库。
+- **新增 Agent Hook 脚本** `hermes/agent-hooks/`：
+  - `hindsight-context.sh`：UserPromptSubmit 召回 hook（替代 mcore-context.sh），调 `recall` 注入 `additionalContext`；
+  - `hindsight-ingest.py`：Stop 写入 hook（替代 mcore-ingest.py），方式 A——整段 transcript 作单文档 `retain`，复用各 agent 的 transcript 提取逻辑（hermes state.db / claude jsonl / codex jsonl / opencode db）。
+- **更新** `hermes/AGENTS.md` 记忆规则块（`mcore-memory-rules-begin/end`）：默认后端改为 Hindsight，召回 `mcp_hindsight_recall`、写入 `mcp_hindsight_retain`/`sync_retain`、反思 `reflect`；补充"历史归纳可能过时、冲突时以用户当前指令为准"的时效提示。
+- **运行时切换**（仅记录，凭据/运行时态不入库）：
+  - Hermes `config.yaml`：`plugins.enabled` 加 `hindsight-memory`，`plugins.disabled` 加 `mcore-memory`；
+  - Claude `~/.claude/settings.json`：UserPromptSubmit → hindsight-context.sh，Stop → hindsight-ingest.py；
+  - Codex `~/.codex/hooks.json`：Stop → hindsight-ingest.py。
+- **`.gitignore`** 追加 `.hindsight-token` / `*-token` / `*.secret` 防凭据误提交。
+
+### 实测
+
+- 服务端：Hindsight 已从 0.10.3 升级至 **1.0.0**（venv pip 升级 + 外部 PG18 自动 alembic 迁移，8985 facts 平滑过渡，pgvector HNSW 索引保留）。
+- MCP：公网端点带 Bearer token 认证（无 token → 401，正确 → 200），36 工具齐全。
+- 召回：6 组真实查询实测，常规长期记忆命中精准（rerank 0.93~0.99），升级后速度普遍快 30~40%；刚写入的近期事件存在服务端 consolidation 归纳延迟（结构性短板）。
+- 写→读闭环：retain 文档后经服务端提取，可被 recall 召回，验证通过。
+
+### 已知边界
+
+- `mcore-active-snapshot` 原为 mcore↔Hindsight 评测快照库，现复用为默认生产库，日常 retain 会写入其中。
+- Hermes / Codex 需重启进程加载新插件/hook；Claude 下次启动生效。
+- Hindsight 对"刚发生、未归纳"的操作细节召回不准，需等后台 consolidation 处理。
+- `connect_agents.py`（mcore 仓库脚本）若重跑会把 Claude/Codex hook 覆盖回 mcore；本次未改该脚本，防覆盖待后续处理。
+
+## 2026-10-10 00:30:00 +0800 - feat(skill): graduate duplicate-file-dedup to high-throughput multi-tier media cleaner
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 升级 `duplicate-file-dedup` 技能，全面落地大容量机械硬盘（4.6TB+）端到端音视频与图片去重清理体系；
+  2. 固化两级阶梯式感知指纹架构（Two-stage hierarchical fingerprinting）：复用元数据时长 + 单帧 50% 核心帧 64-bit dHash 初筛 + 3点交叉严审，全盘 1.78 万视频抽取速率由 1.27 f/s 跃升至 13.9 f/s（耗时从 3.9h 降至 21m，提速 11 倍）；
+  3. 确立短视频时长密集区三帧（25%/50%/75%）联合交叉判定防误杀铁律，拦截 67% 单帧伪匹配；
+  4. 落地大规模图片 64KiB 前缀流式哈希 + 全量 MD5 强哈希引擎，实现毫秒级完全字节克隆判定；
+  5. 落地免 openpyxl 依赖的 uv 驱动四表审计 Excel 导出器，生成 Windows 原生路径的专业交付凭证；
+  6. 新增三个生产级配套执行脚本：`two_stage_video_dedup.py`、`image_exact_dedup.py`、`export_audit_excel.py`。
+- 变更范围: `skills/duplicate-file-dedup/`
+
 ## 2026-10-09 22:05:00 +0800 - feat(codex): set default permissions to full-access (danger-full-access + never approval)
 
 - 项目: `hermes-local-agent-configs`
@@ -1174,3 +1224,35 @@ git -C /home/advancer/project/hermes-local-agent-configs status
    - 彻底避免任何多步骤执行过程中的局部截断或差值覆盖，直接呈现毫秒级精准的端到端单轮总耗时（如 113079ms -> `⏳1m53s`）。
 2. **转录文件自动溯源** (`claude/scripts/statusline.sh`):
    - 增加 `session_id` 自动索引机制，当环境未显式透传 `transcript_path` 时自动定位会话转录日志，保障高可用。
+
+---
+
+## 2026-10-11 — feat(hermes): integrate encrypted sequential two-computer handoff
+
+### 目的
+
+将公司电脑 / 家里电脑轮流使用 Hermes 的交接流程集成到本地配置项目，提供明确命令与可随仓库分发的使用说明。
+
+### 变更范围
+
+- 新增 `scripts/hermes_handoff.py`：`init`、`depart`、`arrive`、`status`、`doctor`；默认离线，显式 `--publish` / `--pull` 控制 Git 操作。
+- 新增 `scripts/requirements-handoff.txt`、`tests/test_hermes_handoff.py`。
+- 新增 `docs/hermes-handoff.md`、`docs/hermes-handoff-verification.md`；更新根 README 与忽略规则。
+- 配置只合并受控字段；规则、记忆、技能、references 和会话主库统一认证加密；SQLite Backup API 一致性备份，恢复前备份及失败回滚。
+- 交接代次、active/departed receipt、本地漂移检查、活动进程检查与独占锁阻断静默覆盖；推送失败保留 pending 并显式重试。
+- 保留本机 Key、OAuth、cc-switch、模型路由、MCP、代理和工作目录；不处理其他 Profile、项目文件、附件或 MemoryCore 数据库。
+
+### 实测
+
+- 普通 WSL：`python3 -m unittest discover -s tests -p test_hermes_handoff.py -v`，45 tests / 31.122s / OK。
+- 临时双 clone + 本地 bare remote 验证公司出发 → 家里接管并修改 → 家里出发 → 公司接管；读回 remote HEAD 验证一致。
+- 验证凭据保留、FTS 检索、技能执行权限、错密钥/篡改/路径穿越/重复路径阻断、漂移阻断、失败回滚与推送重试。
+- 真实目录只执行初始化前 `doctor`，返回成功；未创建真实交接密钥、receipt 或会话包，未提交/推送本仓库。
+
+### 已知边界
+
+- 仅支持 Linux/WSL；两端需同一可信使用者轮流使用且获得公司数据外传授权。
+- 新工具不修复既有明文归档/历史；大库包体与 Git 服务限制需在首次启用时核对。
+- 未用真实全量聊天跑首次导出恢复；两台电脑的 Hermes 版本兼容性需另行确认。
+- 受保护 `AGENTS.md` 写入审批超时，未获批准且未绕过；使用入口通过普通 README / docs 交付。
+- 保留本文件原有未提交记录；本轮不自动 commit/push。
