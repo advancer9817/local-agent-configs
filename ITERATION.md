@@ -2,6 +2,15 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-10-17 18:20 +0800 — chore(rules): simplify communication preference to Chinese only
+
+- 用户要求交流规范只保留“使用中文交流”，取消三段式工具播报、强制长篇分析、固定措辞和语气限制。
+- 已更新仓库 `codex/instructions.md` 与 `hermes/memories/USER.md`，保留非交流类规则与架构偏好；历史迭代不重写。
+- 运行时 `~/.hermes/SOUL.md` 与 `~/gdrive/claude-shared/CLAUDE.md` 的交流段已改为单条中文要求；未修改凭据、模型路由、MCP 或其他 Profile。
+- 未完成：仓库 `hermes/SOUL.md`、`claude/CLAUDE.md` 的保护文件审批超时，未修改且未绕过；本提交不声称三客户端仓库规则已全部对齐。恢复这两份旧模板仍会带回旧交流规则，需后续重新授权修改。
+- 校验：提交前检查 Markdown 差异和空白错误；推送后读回远端 main SHA 验证。
+
+
 ## 2026-10-17 — feat(hermes,claude,codex): switch default memory backend to Hindsight
 
 ### 目的
