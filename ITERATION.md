@@ -1458,3 +1458,161 @@ git -C /home/advancer/project/local-agent-configs status
   - `?? scripts/restore_configs.py`
   - `?? scripts/start-hindsight-tunnels.py`
   - `?? scripts/test_portable_configs.py`
+
+## 2026-10-17 18:20 +0800 — chore(rules): simplify communication preference to Chinese only
+
+- 用户要求交流规范只保留“使用中文交流”，取消三段式工具播报、强制长篇分析、固定措辞和语气限制。
+- 已更新仓库 `codex/instructions.md` 与 `hermes/memories/USER.md`，保留非交流类规则与架构偏好；历史迭代不重写。
+- 运行时 `~/.hermes/SOUL.md` 与 `~/gdrive/claude-shared/CLAUDE.md` 的交流段已改为单条中文要求；未修改凭据、模型路由、MCP 或其他 Profile。
+- 未完成：仓库 `hermes/SOUL.md`、`claude/CLAUDE.md` 的保护文件审批超时，未修改且未绕过；本提交不声称三客户端仓库规则已全部对齐。恢复这两份旧模板仍会带回旧交流规则，需后续重新授权修改。
+- 校验：提交前检查 Markdown 差异和空白错误；推送后读回远端 main SHA 验证。
+
+
+## 2026-10-17 — feat(hermes,claude,codex): switch default memory backend to Hindsight
+
+### 目的
+
+将三个本地 Agent（Hermes / Claude Code / Codex）的默认长期记忆后端从 mcore 切换为 Hindsight（通过已暴露的公网 MCP 端点 `recall` / `retain` / `reflect`），mcore 保留为二线/兼容后端。本次仅镜像脱敏配置与脚本资产，不含任何凭据。
+
+### 变更范围
+
+- **新增 Hermes 插件** `hermes/plugins/hindsight-memory/`（`__init__.py` + `plugin.yaml`）：
+  - `pre_llm_call` 调 Hindsight `recall` 注入记忆上下文；
+  - `post_llm_call` 异步 `retain` 当轮问答为文档（服务端自行提取事实）；
+  - `on_session_end` 兜底：调 `hindsight-ingest.py` 将整段 transcript 作为文档 retain。
+  - 端点默认 `http://35.236.134.50:18888/mcp/mcore-active-snapshot/`，可用 `HINDSIGHT_MCP_URL` 覆盖；Bearer token 从 `~/.hermes/.hindsight-token`（权限 600，已入 `.gitignore`）读取，绝不硬编码/入库。
+- **新增 Agent Hook 脚本** `hermes/agent-hooks/`：
+  - `hindsight-context.sh`：UserPromptSubmit 召回 hook（替代 mcore-context.sh），调 `recall` 注入 `additionalContext`；
+  - `hindsight-ingest.py`：Stop 写入 hook（替代 mcore-ingest.py），方式 A——整段 transcript 作单文档 `retain`，复用各 agent 的 transcript 提取逻辑（hermes state.db / claude jsonl / codex jsonl / opencode db）。
+- **更新** `hermes/AGENTS.md` 记忆规则块（`mcore-memory-rules-begin/end`）：默认后端改为 Hindsight，召回 `mcp_hindsight_recall`、写入 `mcp_hindsight_retain`/`sync_retain`、反思 `reflect`；补充"历史归纳可能过时、冲突时以用户当前指令为准"的时效提示。
+- **运行时切换**（仅记录，凭据/运行时态不入库）：
+  - Hermes `config.yaml`：`plugins.enabled` 加 `hindsight-memory`，`plugins.disabled` 加 `mcore-memory`；
+  - Claude `~/.claude/settings.json`：UserPromptSubmit → hindsight-context.sh，Stop → hindsight-ingest.py；
+  - Codex `~/.codex/hooks.json`：Stop → hindsight-ingest.py。
+- **`.gitignore`** 追加 `.hindsight-token` / `*-token` / `*.secret` 防凭据误提交。
+
+### 实测
+
+- 服务端：Hindsight 已从 0.10.3 升级至 **1.0.0**（venv pip 升级 + 外部 PG18 自动 alembic 迁移，8985 facts 平滑过渡，pgvector HNSW 索引保留）。
+- MCP：公网端点带 Bearer token 认证（无 token → 401，正确 → 200），36 工具齐全。
+- 召回：6 组真实查询实测，常规长期记忆命中精准（rerank 0.93~0.99），升级后速度普遍快 30~40%；刚写入的近期事件存在服务端 consolidation 归纳延迟（结构性短板）。
+- 写→读闭环：retain 文档后经服务端提取，可被 recall 召回，验证通过。
+
+### 已知边界
+
+- `mcore-active-snapshot` 原为 mcore↔Hindsight 评测快照库，现复用为默认生产库，日常 retain 会写入其中。
+- Hermes / Codex 需重启进程加载新插件/hook；Claude 下次启动生效。
+- Hindsight 对"刚发生、未归纳"的操作细节召回不准，需等后台 consolidation 处理。
+- `connect_agents.py`（mcore 仓库脚本）若重跑会把 Claude/Codex hook 覆盖回 mcore；本次未改该脚本，防覆盖待后续处理。
+
+## 2026-10-10 00:30:00 +0800 - feat(skill): graduate duplicate-file-dedup to high-throughput multi-tier media cleaner
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 升级 `duplicate-file-dedup` 技能，全面落地大容量机械硬盘（4.6TB+）端到端音视频与图片去重清理体系；
+  2. 固化两级阶梯式感知指纹架构（Two-stage hierarchical fingerprinting）：复用元数据时长 + 单帧 50% 核心帧 64-bit dHash 初筛 + 3点交叉严审，全盘 1.78 万视频抽取速率由 1.27 f/s 跃升至 13.9 f/s（耗时从 3.9h 降至 21m，提速 11 倍）；
+  3. 确立短视频时长密集区三帧（25%/50%/75%）联合交叉判定防误杀铁律，拦截 67% 单帧伪匹配；
+  4. 落地大规模图片 64KiB 前缀流式哈希 + 全量 MD5 强哈希引擎，实现毫秒级完全字节克隆判定；
+  5. 落地免 openpyxl 依赖的 uv 驱动四表审计 Excel 导出器，生成 Windows 原生路径的专业交付凭证；
+  6. 新增三个生产级配套执行脚本：`two_stage_video_dedup.py`、`image_exact_dedup.py`、`export_audit_excel.py`。
+- 变更范围: `skills/duplicate-file-dedup/`
+
+## 2026-10-09 22:05:00 +0800 - feat(codex): set default permissions to full-access (danger-full-access + never approval)
+
+- 项目: `hermes-local-agent-configs`
+- 分支: `main`
+- 修改说明:
+  1. 在 Codex 全局配置 `~/.codex/config.toml` 及纳管模板 `codex/config.toml` 中配置 `sandbox_mode = "danger-full-access"`；
+  2. 配置 `approval_policy = "never"`，将 Codex 原生权限默认选项固化为 Full Access；
+  3. 解除跨工作区读写与外网限制，消除多智能体无人值守编排（如 FARM）时的权限确认阻塞；
+  4. 经 `codex doctor` 诊断实测验证，沙箱状态已呈现 `unrestricted fs + enabled network · approval Never`。
+- 变更范围: `codex/config.toml`
+
+## 2026-10-09T21:40:00+0800 — Fix Claude Statusline Incremental Turn Duration & Physical Output TPS
+
+### 目的
+修复 Claude Code statusLine 状态栏脚本在长驻留热会话（Farm 编排）环境下指标失真的问题，将上下文累计时间与上下文总 Token 除法替换为真实的单轮活跃耗时与模型生成物理 TPS。
+
+### 变更摘要
+1. **真实物理 TPS 计算** (`claude/scripts/statusline.sh`):
+   - 彻底废除将 Context Window 全量上下文输入/缓存 Token（80k+）除以 API 时间的虚高公式（原先导致 `2.64kt/s`）；
+   - 改为通过 transcript 增量去重统计实际模型输出 Token，除以轮次生成耗时，输出真实的物理吞吐速率（例如 `91.1 tps`）。
+2. **单轮活跃耗时校准** (`claude/scripts/statusline.sh`):
+   - 修复直接使用 `.cost.total_duration_ms` 导致长驻留工位显示整个会话生命周期（如 `⏳2m59s`、`⏳1h`）的缺陷；
+   - 追踪并计算单轮活跃任务耗时（如 `⏳31s`），与编排控制台遥测保持绝对一致。
+
+### 影响范围
+- `claude/scripts/statusline.sh`
+- `ITERATION.md`
+
+---
+
+## 2026-10-09T22:00:00+0800 — Fix Statusline Time Stalling & Sub-step Truncation (Align 112s vs 24s)
+
+### 目的
+修复 statusLine 在多工具复杂任务中因频繁缓存覆盖导致的时间停滞以及将总任务耗时（如 112s / 1m53s）截断误计为最后单步 API 耗时（24s）的严重缺陷。
+
+### 变更摘要
+1. **真实用户任务起点定位** (`claude/scripts/statusline.sh`):
+   - 过滤工具返回消息 (`tool_result`)，准确定位当前用户原始 Prompt 的真实时间戳；
+   - 任务进行中时基于挂钟时间 (`now - prompt_time`) 实时动态递增，彻底消除时间停滞不前的问题；
+   - 任务完成时精准锚定到终态事件时间戳，输出完整的端到端总耗时 (`⏳1m53s` / 112.9s)，与编排面板及终端日志实现完全一致。
+2. **多步骤产出真实 TPS** (`claude/scripts/statusline.sh`):
+   - 汇总整个任务区间内所有回复的 `output_tokens` 并结合全任务耗时计算真实平均吞吐。
+
+### 影响范围
+- `claude/scripts/statusline.sh`
+- `ITERATION.md`
+
+
+---
+
+## 2026-10-09T22:35:00+0800 — Authoritative Turn Duration from Claude Engine & Session Auto-Discovery
+
+### 目的
+彻底解决 Claude 状态栏 (statusline) 在多步复合任务完成后耗时少记（例如实际 112s / 1m53s 却仅记录 24s）的缺陷，将耗时对齐到 Claude 原生内核级记录的标准单轮耗时。
+
+### 变更摘要
+1. **优先采信官方 turn_duration 耗时** (`claude/scripts/statusline.sh`):
+   - 解析 Claude Code 转录中系统级终态事件 `type="system", subtype="turn_duration"` 的 `durationMs` 字段；
+   - 彻底避免任何多步骤执行过程中的局部截断或差值覆盖，直接呈现毫秒级精准的端到端单轮总耗时（如 113079ms -> `⏳1m53s`）。
+2. **转录文件自动溯源** (`claude/scripts/statusline.sh`):
+   - 增加 `session_id` 自动索引机制，当环境未显式透传 `transcript_path` 时自动定位会话转录日志，保障高可用。
+
+---
+
+## 2026-10-11 — feat(hermes): integrate encrypted sequential two-computer handoff
+
+### 目的
+
+将公司电脑 / 家里电脑轮流使用 Hermes 的交接流程集成到本地配置项目，提供明确命令与可随仓库分发的使用说明。
+
+### 变更范围
+
+- 新增 `scripts/hermes_handoff.py`：`init`、`depart`、`arrive`、`status`、`doctor`；默认离线，显式 `--publish` / `--pull` 控制 Git 操作。
+- 新增 `scripts/requirements-handoff.txt`、`tests/test_hermes_handoff.py`。
+- 新增 `docs/hermes-handoff.md`、`docs/hermes-handoff-verification.md`；更新根 README 与忽略规则。
+- 配置只合并受控字段；规则、记忆、技能、references 和会话主库统一认证加密；SQLite Backup API 一致性备份，恢复前备份及失败回滚。
+- 交接代次、active/departed receipt、本地漂移检查、活动进程检查与独占锁阻断静默覆盖；推送失败保留 pending 并显式重试。
+- 保留本机 Key、OAuth、cc-switch、模型路由、MCP、代理和工作目录；不处理其他 Profile、项目文件、附件或 MemoryCore 数据库。
+
+### 实测
+
+- 普通 WSL：`python3 -m unittest discover -s tests -p test_hermes_handoff.py -v`，45 tests / 31.122s / OK。
+- 临时双 clone + 本地 bare remote 验证公司出发 → 家里接管并修改 → 家里出发 → 公司接管；读回 remote HEAD 验证一致。
+- 验证凭据保留、FTS 检索、技能执行权限、错密钥/篡改/路径穿越/重复路径阻断、漂移阻断、失败回滚与推送重试。
+- 真实目录只执行初始化前 `doctor`，返回成功；未创建真实交接密钥、receipt 或会话包，未提交/推送本仓库。
+
+### 已知边界
+
+- 仅支持 Linux/WSL；两端需同一可信使用者轮流使用且获得公司数据外传授权。
+- 新工具不修复既有明文归档/历史；大库包体与 Git 服务限制需在首次启用时核对。
+- 未用真实全量聊天跑首次导出恢复；两台电脑的 Hermes 版本兼容性需另行确认。
+- 受保护 `AGENTS.md` 写入审批超时，未获批准且未绕过；使用入口通过普通 README / docs 交付。
+- 保留本文件原有未提交记录；本轮不自动 commit/push。
+
+## 2026-10-23 合并远端配置与交接工具
+
+- 普通合并 origin/main，保留双方提交与全部迭代记录，不强推。保留远端双机交接工具、沟通规则简化及 Codex 权限设置；保留本次路径可移植化与解除回环限制。
+- 状态栏保留双方功能，个人路径按 HOME 发现。合并后路径恢复 4 项测试及双机交接 45 项离线测试全部通过；未执行真实交接、上传或客户端覆盖。非测试文件密钥样式扫描无命中，凭据/缓存/会话库继续排除。

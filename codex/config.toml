@@ -1,6 +1,8 @@
 model_provider = "custom"
 model = "gemini-3.8-flash"
 approvals_reviewer = "user"
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
 model_reasoning_effort = "high"
 service_tier = "default"
 plan_mode_reasoning_effort = "xhigh"
