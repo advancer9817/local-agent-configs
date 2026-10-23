@@ -2,6 +2,31 @@
 
 本文件记录随仓库提交一起推送的项目迭代信息，用于追溯每次变更的范围、原因与提交记录。
 
+## 2026-10-20 +0800 - feat(hindsight): GCP 50 记忆编排、冗余剪枝与心智模型初始化
+
+- 项目: `GCP 50 (35.236.134.50) / Hindsight (Bank: mcore-active-snapshot)`
+- 修改说明:
+  1. **响应用户指令连续推进编排治理**：跳过第一阶段全库转储，通过原生 OpenSSH 穿透链路依次完成第二至第五阶段调优；
+  2. **阶段二（精准剪枝）**：通过 Hindsight 官方 API 级联清理 127 份冗余文档（表格尾段 34 份、旧版 WSL ITERATION 7 份、递增前缀快照 77 份、通知与闲聊 9 份），使全库唯一 1 条 `consolidation_failed` 状态彻底归零；
+  3. **阶段三（凭据脱敏）**：对两份保留的含明文 AK 与 Groq Key 的会话文档正则脱敏并覆写入库，全库明文密钥残留归零；
+  4. **阶段四（参数调优）**：在 `/opt/hindsight-research/runtime.json` 注入 `HINDSIGHT_API_RECALL_MAX_QUERY_TOKENS=2500` 等参数，消除 500 token 硬截断告警；
+  5. **阶段五（标题与心智模型）**：事务回填近期文档的 `display_title`（标题覆盖率达到 100%），并通过官方 API 创建激活了 5 个核心领域 Mental Models（网络拓扑、记忆与技能规范、QAI口径、TPMS架构、个人工程偏好），全部完成合成（合计 18,501 字）；
+  6. **阶段六（深度语义去重与残缺碎片清理）**：利用 `pgvector` 余弦矩阵与 3-gram 包含度执行 CD-HIT 星型无传递去重（严格保留 477 个重复簇的 Winner 基准项），并通过官方 `DELETE` API 级联清理 **960 份深层冗余与低质量文档**（mcore 语义重复副本 900 份、早期按英文点号劈断的断头断尾残片 43 份、WSL/GCP 跨端重复与被 v2 取代的旧报告 9 份、瞬态测试探针与空转确认轮次 8 份），删前全量备份于 `/opt/hindsight-research/consolidation-optimize-20261020/stage6_pre_delete_backup.json.gz`，全库文档收敛至 6,157 份；
+  7. **交付物同步**：在桌面输出离线单文件 HTML 报告《GCP50_Hindsight记忆编排与治理实施方案_20261020.html》。
+- 影响范围: GCP 50 远端 Hindsight 数据库、`runtime.json`、本地通用交付目录
+- 验证: `hindsight_recall` 实测返回正常；PostgreSQL 查验 `consolidation_failed_at IS NOT NULL` 为 0，明文凭据匹配为 0，缺失标题为 0，`mental_models` 数量为 5。
+- 状态: 远端操作完成，本地未执行 git push。
+
+## 2026-10-20 +0800 - docs(hermes): SOUL 新增方案文档 HTML 交付规则
+
+- 项目: `hermes-local-agent-configs`
+- 修改说明: 用户要求“以后的实施细节，各种方案都出 HTML 版”，并补充“不能跟 md 一样，要充分利用 HTML 优势增强可读性”。在 SOUL.md 第 4 节“统一交付路径”新增一条：方案、实施细节评审、口径对比等文档一律交付离线单文件 HTML，严禁 Markdown 直转；须结论前置并善用流程图、对比表、状态色标、时间线、可折叠细节与目录导航，样式贴合主题，交付前浏览器核验。
+- 变更范围: `hermes/SOUL.md`（与运行时 `~/.hermes/SOUL.md` 同步，两份逐字一致）、`ITERATION.md`
+- 影响: 仅新会话生效（会话内 System Prompt 冻结）；不涉及配置与凭据。
+- 验证: `cmp ~/.hermes/SOUL.md hermes/SOUL.md`
+- 回滚: 删除该条即可。
+- 状态: 未提交、未推送（仓库另有 Hindsight 迁移等未提交改动，待用户决定是否一并提交）。
+
 ## 2026-10-07 18:20:00 +0800 - feat(hermes): register /gate as native skill for desktop autocomplete popover
 
 - 项目: `hermes-local-agent-configs`
@@ -1295,3 +1320,141 @@ git -C /home/advancer/project/hermes-local-agent-configs status
 bash /home/advancer/.claude/statusline.sh <<< '{"cost":{"total_duration_ms":113000},"context_window":{"used_percentage":18}}'
 git -C /home/advancer/project/local-agent-configs status
 ```
+
+---
+
+## 2026-10-19 — Replace local MemoryCore integrations with remote GCP Hindsight
+
+### 授权与范围
+用户明确确认切换 WSL、Windows 各客户端及 Hermes 各 Profile。目标为 GCP `35.236.134.50:18888`，沿用现有 Bank `mcore-active-snapshot`。保留所有源码、数据库、历史记忆、会话及原有服务；不提交、不推送 Git。
+
+### 变更
+- Hermes 默认及各 Profile 启用官方 Hindsight 1.2.3 提供方，使用 `local_external` 连接 SSH 回环入口，开启自动召回、留存和工具；Windows 实际数据目录 `%LOCALAPPDATA%/hermes` 同步配置。
+- Claude Code、Codex、Gemini、OpenCode 的 MCP 切换到同一 Bank 的认证 MCP。移除旧 mcore 环境变量、Hook、权限项和活动规则。
+- Claude/Codex/Gemini 使用轻量召回与留存适配器；Windows 侧经原生 WSL 命令执行，转换 Windows 转录路径。OpenCode 使用 MCP 和记忆规则，不声明未经验证的自动 Hook。
+- 归档旧 mcore 插件和 Hook、仓库恢复副本；不停止本地 mcore 服务和定时器。源码信任记录、历史说明和既有记忆不作为活动配置删除。
+- 原生 SSH 仅绑定 Windows、WSL 各自的 `127.0.0.1:18888`，不安装系统服务、不创建桌面图标。重连入口 `scripts/start-hindsight-tunnels.py`。
+- 官方 CLI 曾移除 Profile 展示覆盖项，已从原始备份恢复。所有运行配置的非记忆设置与备份语义一致（排除 CLI 配置版本元数据）。
+- Windows 插件默认 GBK 读取 UTF-8 `plugin.yaml` 导致原生入口无法注册提供方；只将 `_plugin_version()` 的 `read_text()` 改为 `read_text(encoding="utf-8")`，原文件已备份。该部署兼容补丁会被插件更新覆盖，更新后需复核。
+
+### 验证
+- Windows 与 WSL 回环健康检查通过；带认证 MCP initialize / initialized / tools-list 返回 200 / 202空响应 / 200。
+- WSL 与 Windows 官方提供方均真实召回成功；客户端 Hook 输出真实召回上下文。
+- 固定迁移验收文档同步留存 completed 并读回原文；Hermes 自动留存和 Codex Hook 异步留存均读回准确文档与非零记忆单元。
+- JSON、TOML、YAML 可解析；活动配置无旧 mcore 接入，唯一保留匹配是普通源码目录信任项。
+- Linux 凭据权限600，Windows 凭据文件当前用户独占且无继承；配置仓库扫描未发现真实 MCP 令牌；`git diff --check` 通过。
+
+### 生效与回滚
+旧长驻会话可能仍持有已加载的插件和提示词；新会话或用户选择的客户端重启后加载新配置。本次不强制重启现有桌面、终端或网关。
+原生转发不是开机服务；退出、断线或重启后需运行重连脚本。回滚按 `~/.local/state/hindsight-migration/20261019-094403/manifest.json` 恢复配置及归档旧插件，只处理本次创建的 SSH 进程。配置备份含认证信息，不进入仓库。
+
+
+---
+
+## 2026-10-21 — Switch Hindsight memory tools to direct remote (35.236.134.50:18888)
+
+### 授权与意图
+用户明确要求所有 Agent 记忆工具直连远端 Hindsight 服务，不再依赖本地 SSH 回环转发监听。保留目标 Bank `mcore-active-snapshot` 与所有现有记忆数据。
+
+### 变更清单
+- **连接中枢**：更新 `~/.config/hindsight/connection.json`，将 `api_url` 与 `mcp_url` 指向 `http://35.236.134.50:18888`。
+- **Hook 脚本**：更新 `~/.local/lib/hindsight/hindsight-hook.py`，放宽入口白名单检查以允许直连远程 `35.236.134.50`。
+- **Claude Code**：WSL (`~/.claude.json`) 与 Windows (`/mnt/c/Users/.../.claude.json`) 的 `hindsight` MCP 端点更新为公网地址。
+- **Codex**：WSL (`~/.codex/config.toml`) 与 Windows (`/mnt/c/Users/.../.codex/config.toml`) 的 `hindsight` MCP 端点更新为公网地址。
+- **Gemini & OpenCode**：`~/.gemini/settings.json` 与 `~/.config/opencode/opencode.json` 的 MCP 地址更新为公网地址。
+- **Hermes Agent**：默认配置 (`~/.hermes/hindsight/config.json`)、Windows 宿主配置 (`AppData/Local/hermes/hindsight/config.json`) 及 8 个 Profile (`design`, `review`, `security`, `commitint`, `qa`, `coord`, `impl`, `req`) 的 `api_url` 全部更新为公网地址。
+- **脱敏仓库镜像**：同步更新 `local-agent-configs` 中的对应脱敏镜像文件。
+
+### 验收与验证
+- 远端健康检查：`http://35.236.134.50:18888/health` 返回 HTTP 200。
+- MCP 协议握手：使用已授权 Token 发起 `initialize` 与 `tools/list`，返回 HTTP 200 并成功发现 `retain`、`recall`、`reflect` 等 36 项工具。
+- 生命周期 Hook：向 `hindsight-hook.py recall --agent claude` 输入测试载荷，成功在 2 秒内调取真实历史记忆并输出 Claude 专用 Hook 上下文。
+- Hermes 提供方验证：通过 `HindsightMemoryProvider` 调用 `handle_tool_call("hindsight_recall")`，成功检索到真实 Golden Set 评测记忆。
+- 安全边界：全量文件配置在修改前均于 `~/.hermes/cache/scratch/hindsight-cutover-backups/` 完成 0600 权限快照备份；迭代记录与仓库中无明文凭据暴露。
+
+
+## 2026-10-22 枢纽公网 IP 迁移
+
+- 现役枢纽地址由 `35.236.134.50` 更新为 `35.194.237.91`，以原主机可信 SSH 密钥验证身份。
+- 同步 Windows/WSL SSH、Claude/Codex/Gemini/OpenCode、两端 cc-switch 地址副本与当前恢复资产；未改模型和凭据。
+- Hindsight 客户端通过本机 `127.0.0.1:18888` 原生 SSH 加密转发，健康检查及 MCP 握手通过；保留 Bank `mcore-active-snapshot`。
+- ESA 配置已是新 IP；CPA/CPAMP/Hindsight 域名实测 200，自定义面板未改。
+- 沙箱 C 的 2224 反向端口及已知备用入口不可达，尚未修改其内部守护；历史归档和其它 profile 保持原样。
+- 未提交或推送。
+
+## 2026-10-22 默认 Hermes 原生视觉配置修正
+
+- 用户确认其现用模型均支持原生视觉，并批准修正；默认配置增加 `model.supports_vision: true`，保留 `agent.image_input_mode: auto`。
+- WSL `cpa`、`cpa-cloud` 共 12 个模型条目增加 `supports_vision: true`；两端 cc-switch 的 Hermes 模型元数据同步补齐，保留各自原有列表、激活状态、协议、地址和凭据。
+- `vision.embed_target_bytes` 设为 `1048576`，提高原生工具图片嵌入字节预算；未修改源码中固定的 1568 像素长边限制。
+- 脱敏镜像仅同步全局能力声明与质量预算，未用现役配置覆盖仓库既有旧模型列表或其它未提交改动。
+- 验证：配置与备份精确结构比对通过；两端数据库逐行读回符合预期。12 个现役模型条目的用户附件和工具图片路由均为 native；本地 PNG 附件原始字节保持一致，真实识图处理器返回 `_multimodal` / `native_vision: true`，阻断辅助描述函数后仍成功。未向模型网关发送请求。
+- 验证边界：桌面内部路由函数采用本地依赖注入测试，不等于运行中桌面端到上游的端到端实测；pytest 未安装，未运行 pytest 套件。测试图经工具从 2400×1800 缩为 1200×900，用户附件组装不发生该缩图。旧会话的已固化工具描述与已丢失图片信息不会自动恢复，需新会话上传原图验收。
+- 私有回滚快照：`~/.hermes/cache/scratch/vision-config-20261022-141349/`（含配置、SQLite 备份及本地验证报告；scratch 非长期备份）。回滚只恢复本次视觉字段，勿覆盖后来配置变更。
+- 未修改其它 profile、模型端点或凭据，未重启活跃后端，未提交或推送。
+
+## 2026-10-23 路径可移植化、解除 Hindsight 回环强制规则并归档全部待提交变更
+
+- 分支：`main`；远端：`https://github.com/advancer9817/local-agent-configs.git`。用户明确授权本配置库所有改动提交、普通推送；不强推。
+- 删除工作目录 AGENTS、Claude/Codex 运行时规则、仓库规则副本及迁移模板中“所有客户端必须回环／SSH”的限制。保留凭据脱敏与禁止不可信第三方穿透；历史迁移方案标为历史，不重写历史证据。
+- Claude、Codex、Hermes 配置中个人绝对路径改为 `./` HOME 相对模板；恢复工具按目标 HOME 解析，不依赖启动 cwd。Windows 用户和系统目录改自动发现，支持环境覆盖。网络 URL、系统规定路径和历史审计路径不相对化。
+- 排除 Codex 单机项目信任与 Hook 授权哈希、Hermes updater 安装状态。同步最新脱敏内置记忆；补收缺失的微信通知 Hook，仅从本地账户文件加载凭据，日志走 scratch。旧 Claude 密钥字段统一脱敏。
+- 一并归档此前未提交的 Hindsight 插件/Hook 接入、多个 Profile 的脱敏配置、模型视觉字段、GCP 地址迁移、旧 mcore 自动插件与脚本退役，以及现有迭代记录。没有删除真实会话库或密钥。
+- 离线验证：`python3 scripts/test_portable_configs.py` 四项通过，覆盖模板语法、路径/URL、从其它 cwd 恢复三个客户端、带空格 HOME、Hook 文件存在与重复恢复备份；`git diff --check` 通过。没有调用生产模型网关或自动启动隧道。
+- 验证边界：未迁移运行中客户端连接 URL，未重启活跃后端；旧会话已固化的提示不能凭文件修改宣称热更新。历史迁移工具未在真实环境重跑。
+- 推送前发现本地/远端分叉，采用保留双方历史的普通合并；远端新增双机交接工具将一并保留并在合并后离线验证。
+- 忽略：凭据、会话/数据库、日志缓存、pyc 与 venv 依旧排除。不将现用配置库当作凭据备份。
+- 回滚：通过 Git 后续回退提交恢复仓库模板；隔离恢复结果在 scratch 中，运行时规则可按原文恢复，勿整体覆盖活跃配置。
+- 本次提交覆盖的完整变更清单（含此前修改）：
+  - ` M ITERATION.md`
+  - ` M README.md`
+  - ` M claude/CLAUDE.md`
+  - ` M claude/config.json`
+  - ` M claude/installed_plugins.json`
+  - ` M claude/known_marketplaces.json`
+  - ` M claude/scripts/statusline.sh`
+  - ` M claude/settings.json`
+  - ` M claude/settings.local.json`
+  - ` M codex/config.toml`
+  - ` M codex/hooks.json`
+  - ` M codex/instructions.md`
+  - ` M hermes/SOUL.md`
+  - ` M hermes/config.yaml`
+  - ` M hermes/memories/MEMORY.md`
+  - ` M hermes/memories/USER.md`
+  - ` M hermes/plugins/external-agents/runner.py`
+  - ` D hermes/plugins/mcore-memory/__init__.py`
+  - ` D hermes/plugins/mcore-memory/plugin.yaml`
+  - ` M hermes/skills/gate/SKILL.md`
+  - ` D scripts/lmmcp-query`
+  - ` D scripts/mcore-context.sh`
+  - ` D scripts/mcore-ingest.py`
+  - ` M scripts/restore_to_claude.sh`
+  - ` M scripts/restore_to_codex.sh`
+  - ` M scripts/restore_to_hermes.sh`
+  - `?? docs/plans/2026-10-19-hindsight-migration.md`
+  - `?? hermes/hindsight/config.json`
+  - `?? hermes/profiles/commitint/config.yaml`
+  - `?? hermes/profiles/commitint/hindsight/config.json`
+  - `?? hermes/profiles/coord/config.yaml`
+  - `?? hermes/profiles/coord/hindsight/config.json`
+  - `?? hermes/profiles/design/config.yaml`
+  - `?? hermes/profiles/design/hindsight/config.json`
+  - `?? hermes/profiles/impl/config.yaml`
+  - `?? hermes/profiles/impl/hindsight/config.json`
+  - `?? hermes/profiles/qa/config.yaml`
+  - `?? hermes/profiles/qa/hindsight/config.json`
+  - `?? hermes/profiles/req/config.yaml`
+  - `?? hermes/profiles/req/hindsight/config.json`
+  - `?? hermes/profiles/review/config.yaml`
+  - `?? hermes/profiles/review/hindsight/config.json`
+  - `?? hermes/profiles/security/config.yaml`
+  - `?? hermes/profiles/security/hindsight/config.json`
+  - `?? scripts/finish-hindsight-migration.py`
+  - `?? scripts/hindsight-hook.py`
+  - `?? scripts/migrate-hindsight-local.py`
+  - `?? scripts/notify_weixin_ilink.py`
+  - `?? scripts/portable_paths.py`
+  - `?? scripts/restore_configs.py`
+  - `?? scripts/start-hindsight-tunnels.py`
+  - `?? scripts/test_portable_configs.py`

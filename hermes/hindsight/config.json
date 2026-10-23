@@ -1,0 +1,22 @@
+{
+  "mode": "local_external",
+  "api_url": "http://127.0.0.1:18888",
+  "bank_id": "mcore-active-snapshot",
+  "memory_mode": "hybrid",
+  "auto_recall": true,
+  "auto_retain": true,
+  "retain_async": true,
+  "recall_sync": true,
+  "recall_budget": "low",
+  "recall_max_tokens": 1500,
+  "recall_types": [
+    "world",
+    "experience",
+    "observation"
+  ],
+  "retain_source": "hermes",
+  "retain_tags": [
+    "source_agent:hermes"
+  ],
+  "timeout": 45
+}

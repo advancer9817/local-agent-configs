@@ -1,12 +1,12 @@
 {
   "hooks": {
-    "SessionStart": [
+    "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "MCORE_AGENT_ID=codex sh /home/advancer/.mcore/bin/mcore-hook-context.sh",
-            "timeout": 5
+            "command": "python3 \"./.local/lib/hindsight/hindsight-hook.py\" recall --agent codex",
+            "timeout": 45
           }
         ]
       }
@@ -16,19 +16,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "MCORE_AGENT_ID=codex sh /home/advancer/.mcore/bin/mcore-hook-ingest.sh",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "MCORE_AGENT_ID=codex sh /home/advancer/.mcore/bin/mcore-hook-context.sh",
-            "timeout": 5
+            "command": "python3 \"./.local/lib/hindsight/hindsight-hook.py\" retain --agent codex",
+            "timeout": 60
           }
         ]
       }

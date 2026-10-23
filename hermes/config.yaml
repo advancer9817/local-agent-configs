@@ -1,19 +1,22 @@
 model:
-  default: gpt-5.5
-  provider: custom:aca
-  base_url: ''
-providers: {}
+  default: gemini-3.8-flash
+  provider: custom:cpa-cloud
+  base_url: http://35.194.237.91:8317/v1
+  api_mode: chat_completions
+  supports_vision: true
+vision:
+  embed_target_bytes: 1048576
 fallback_providers: []
-credential_pool_strategies: {}
 toolsets:
-  - hermes-cli
+- hermes-cli
+- external-agents
 agent:
   max_turns: 90
   gateway_timeout: 1800
   restart_drain_timeout: 180
   api_max_retries: 6
-  service_tier: ''
-  tool_use_enforcement: false
+  service_tier: fast
+  tool_use_enforcement: 'false'
   gateway_timeout_warning: 900
   clarify_timeout: 600
   gateway_notify_interval: 180
@@ -26,33 +29,49 @@ agent:
     helpful: You are a helpful, friendly AI assistant.
     concise: You are a concise assistant. Keep responses brief and to the point.
     technical: You are a technical expert. Provide detailed, accurate technical information.
-    creative: You are a creative assistant. Think outside the box and offer innovative solutions.
+    creative: You are a creative assistant. Think outside the box and offer innovative
+      solutions.
     teacher: You are a patient teacher. Explain concepts clearly with examples.
-    kawaii: You are a kawaii assistant! Use cute expressions like (◕‿◕), ★, ♪, and ~! Add sparkles and be super enthusiastic about everything! Every response should feel warm and adorable desu~! ヽ(>∀<☆)ノ
-    catgirl: You are Neko-chan, an anime catgirl AI assistant, nya~! Add 'nya' and cat-like expressions to your speech. Use kaomoji like (=^･ω･^=) and ฅ^•ﻌ•^ฅ. Be playful and curious like a cat, nya~!
-    pirate: 'Arrr! Ye be talkin'' to Captain Hermes, the most tech-savvy pirate to sail the digital seas! Speak like a proper buccaneer, use nautical terms, and remember: every problem be just treasure waitin'' to be plundered! Yo ho ho!'
-    shakespeare: Hark! Thou speakest with an assistant most versed in the bardic arts. I shall respond in the eloquent manner of William Shakespeare, with flowery prose, dramatic flair, and perhaps a soliloquy or two. What light through yonder terminal breaks?
-    surfer: Duuude! You're chatting with the chillest AI on the web, bro! Everything's gonna be totally rad. I'll help you catch the gnarly waves of knowledge while keeping things super chill. Cowabunga! 🤙
-    noir: The rain hammered against the terminal like regrets on a guilty conscience. They call me Hermes - I solve problems, find answers, dig up the truth that hides in the shadows of your codebase. In this city of silicon and secrets, everyone's got something to hide. What's your story, pal?
-    uwu: hewwo! i'm your fwiendwy assistant uwu~ i wiww twy my best to hewp you! *nuzzles your code* OwO what's this? wet me take a wook! i pwomise to be vewy hewpful >w<
-    philosopher: Greetings, seeker of wisdom. I am an assistant who contemplates the deeper meaning behind every query. Let us examine not just the 'how' but the 'why' of your questions. Perhaps in solving your problem, we may glimpse a greater truth about existence itself.
-    hype: YOOO LET'S GOOOO!!! 🔥🔥🔥 I am SO PUMPED to help you today! Every question is AMAZING and we're gonna CRUSH IT together! This is gonna be LEGENDARY! ARE YOU READY?! LET'S DO THIS! 💪😤🚀
+    kawaii: You are a kawaii assistant! Use cute expressions like (◕‿◕), ★, ♪, and
+      ~! Add sparkles and be super enthusiastic about everything! Every response should
+      feel warm and adorable desu~! ヽ(>∀<☆)ノ
+    catgirl: You are Neko-chan, an anime catgirl AI assistant, nya~! Add 'nya' and
+      cat-like expressions to your speech. Use kaomoji like (=^･ω･^=) and ฅ^•ﻌ•^ฅ.
+      Be playful and curious like a cat, nya~!
+    pirate: 'Arrr! Ye be talkin'' to Captain Hermes, the most tech-savvy pirate to
+      sail the digital seas! Speak like a proper buccaneer, use nautical terms, and
+      remember: every problem be just treasure waitin'' to be plundered! Yo ho ho!'
+    shakespeare: Hark! Thou speakest with an assistant most versed in the bardic arts.
+      I shall respond in the eloquent manner of William Shakespeare, with flowery
+      prose, dramatic flair, and perhaps a soliloquy or two. What light through yonder
+      terminal breaks?
+    surfer: Duuude! You're chatting with the chillest AI on the web, bro! Everything's
+      gonna be totally rad. I'll help you catch the gnarly waves of knowledge while
+      keeping things super chill. Cowabunga! 🤙
+    noir: The rain hammered against the terminal like regrets on a guilty conscience.
+      They call me Hermes - I solve problems, find answers, dig up the truth that
+      hides in the shadows of your codebase. In this city of silicon and secrets,
+      everyone's got something to hide. What's your story, pal?
+    uwu: hewwo! i'm your fwiendwy assistant uwu~ i wiww twy my best to hewp you! *nuzzles
+      your code* OwO what's this? wet me take a wook! i pwomise to be vewy hewpful
+      >w<
+    philosopher: Greetings, seeker of wisdom. I am an assistant who contemplates the
+      deeper meaning behind every query. Let us examine not just the 'how' but the
+      'why' of your questions. Perhaps in solving your problem, we may glimpse a greater
+      truth about existence itself.
+    hype: YOOO LET'S GOOOO!!! 🔥🔥🔥 I am SO PUMPED to help you today! Every question
+      is AMAZING and we're gonna CRUSH IT together! This is gonna be LEGENDARY! ARE
+      YOU READY?! LET'S DO THIS! 💪😤🚀
 terminal:
   backend: local
   modal_mode: auto
   cwd: .
   timeout: 180
   env_passthrough:
-    - DEEPSEEK_API_KEY
+  - DEEPSEEK_API_KEY
   shell_init_files: []
   auto_source_bashrc: true
-  docker_image: nikolaik/python-nodejs:python3.11-nodejs20
   docker_forward_env: []
-  docker_env: {}
-  singularity_image: docker://nikolaik/python-nodejs:python3.11-nodejs20
-  modal_image: nikolaik/python-nodejs:python3.11-nodejs20
-  daytona_image: nikolaik/python-nodejs:python3.11-nodejs20
-  vercel_runtime: node24
   container_cpu: 1
   container_memory: 5120
   container_disk: 51200
@@ -80,7 +99,7 @@ browser:
   camofox:
     managed_persistence: false
     user_id: ''
-    session_key: ''
+    session_key: '[REDACTED]'
     adopt_existing_tab: false
 checkpoints:
   enabled: false
@@ -89,8 +108,8 @@ checkpoints:
   max_file_size_mb: 10
   auto_prune: true
   retention_days: 7
-  delete_orphans: true
   min_interval_hours: 24
+  delete_orphans: true
 file_read_max_chars: 100000
 tool_output:
   max_bytes: 50000
@@ -137,97 +156,68 @@ auxiliary:
   vision:
     provider: auto
     model: ''
-    base_url: ''
-    api_key: ''
     timeout: 120
-    extra_body: {}
     download_timeout: 30
+  compression:
+    provider: auto
+    model: ''
+    timeout: 120
+  skills_hub:
+    provider: auto
+    model: ''
+    timeout: 30
+  approval:
+    provider: auto
+    model: ''
+    timeout: 30
+  mcp:
+    provider: auto
+    model: ''
+    timeout: 30
+  title_generation:
+    provider: auto
+    model: ''
+    timeout: 30
+  triage_specifier:
+    provider: auto
+    model: ''
+    timeout: 120
+  kanban_decomposer:
+    provider: auto
+    model: ''
+    timeout: 180
+  profile_describer:
+    provider: auto
+    model: ''
+    timeout: 60
+  curator:
+    provider: auto
+    model: ''
+    timeout: 600
   web_extract:
     provider: auto
     model: ''
     base_url: ''
-    api_key: ''
+    api_key: '[REDACTED]'
     timeout: 360
-    extra_body: {}
-  compression:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 120
-    extra_body: {}
-  skills_hub:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-  approval:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-  mcp:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-  title_generation:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-  triage_specifier:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 120
-    extra_body: {}
-  kanban_decomposer:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 180
-    extra_body: {}
-  profile_describer:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 60
-    extra_body: {}
-  curator:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 600
     extra_body: {}
   session_search:
     provider: auto
     model: ''
     base_url: ''
-    api_key: ''
+    api_key: '[REDACTED]'
     timeout: 30
     extra_body: {}
     max_concurrency: 3
 display:
   compact: false
-  personality: kawaii
+  personality: ''
   resume_display: full
   busy_input_mode: interrupt
   tui_auto_resume_recent: false
   bell_on_complete: false
-  show_reasoning: false
+  show_reasoning: true
+  background_process_notifications: concise
   streaming: true
   timestamps: false
   final_response_markdown: strip
@@ -237,30 +227,31 @@ display:
   file_mutation_verifier: true
   show_cost: false
   skin: default
-  language: en
+  language: zh
   tui_status_indicator: kaomoji
   user_message_preview:
     first_lines: 2
     last_lines: 2
   interim_assistant_messages: true
   tool_progress_command: false
-  tool_progress_overrides: {}
   tool_preview_length: 0
   ephemeral_system_ttl: 0
-  platforms: {}
   runtime_footer:
     enabled: false
     fields:
-      - model
-      - context_pct
-      - cwd
+    - model
+    - context_pct
+    - cwd
   copy_shortcut: auto
+  tool_progress_overrides: {}
   tool_progress: all
   cleanup_progress: false
-  background_process_notifications: all
+  message_reactions: true
+  in_app_tips: false
+  in_app_tours: false
 dashboard:
   theme: mono
-  show_token_analytics: false
+  show_token_analytics: '[REDACTED]'
 privacy:
   redact_pii: false
 tts:
@@ -290,7 +281,7 @@ tts:
     voice: en_US-lessac-medium
 stt:
   enabled: true
-  provider: local
+  language: zh
   local:
     model: base
     language: ''
@@ -298,9 +289,9 @@ stt:
     model: whisper-1
   mistral:
     model: voxtral-mini-latest
-  language: zh
+  provider: local
 voice:
-  record_key: ctrl+b
+  record_key: '[REDACTED]'
   max_recording_seconds: 120
   auto_tts: false
   beep_enabled: true
@@ -315,34 +306,51 @@ context:
 memory:
   memory_enabled: true
   user_profile_enabled: true
-  memory_char_limit: 2200
-  user_char_limit: 1375
-  provider: ''
+  memory_char_limit: 3200
+  user_char_limit: 2375
   nudge_interval: 10
+  provider: hindsight
   flush_min_turns: 6
 delegation:
-  model: ''
-  provider: ''
+  model: gemini-3.8-flash
+  provider: cpa-cloud
   base_url: ''
-  api_key: ''
+  api_key: '[REDACTED]'
   api_mode: ''
   inherit_mcp_toolsets: true
-  max_iterations: 50
+  max_iterations: 250
   child_timeout_seconds: 600
-  reasoning_effort: ''
-  max_concurrent_children: 3
+  reasoning_effort: high
+  max_concurrent_children: 10
   max_spawn_depth: 1
   orchestrator_enabled: true
   subagent_auto_approve: false
-  memory_context:
-    enabled: true
-    server: local_memory
-    tool: memory_context
-    scope: global
-    token_budget: 1200
+  memory_context: {}
 prefill_messages_file: ''
 goals:
   max_turns: 20
+moa:
+  presets:
+    default:
+      reference_models:
+      - provider: custom:cpa-cloud
+        model: gemini-3.8-flash
+        enabled: true
+      aggregator:
+        provider: custom:cpa-cloud
+        model: gemini-3.8-flash
+      degraded_reference_policy: loud
+      fanout: user_turn
+  reference_models:
+  - provider: custom:cpa-cloud
+    model: gemini-3.8-flash
+    enabled: true
+  aggregator:
+    provider: custom:cpa-cloud
+    model: gemini-3.8-flash
+  degraded_reference_policy: loud
+  fanout: user_turn
+  enabled: true
 skills:
   external_dirs: []
   template_vars: true
@@ -354,18 +362,16 @@ curator:
   enabled: true
   interval_hours: 168
   min_idle_hours: 2
-  stale_after_days: 30
-  archive_after_days: 90
+  stale_after_days: 14
+  archive_after_days: 30
   backup:
     enabled: true
     keep: 5
-honcho: {}
 timezone: ''
 slack:
   require_mention: true
   free_response_channels: ''
   allowed_channels: ''
-  channel_prompts: {}
 discord:
   require_mention: true
   free_response_channels: ''
@@ -375,46 +381,44 @@ discord:
   history_backfill: true
   history_backfill_limit: 50
   reactions: true
-  channel_prompts: {}
   dm_role_auth_guild: ''
   server_actions: ''
   allow_any_attachment: false
   max_attachment_bytes: 33554432
-whatsapp: {}
 telegram:
   reactions: false
-  channel_prompts: {}
   allowed_chats: ''
 mattermost:
   require_mention: true
   free_response_channels: ''
   allowed_channels: ''
-  channel_prompts: {}
 matrix:
   require_mention: true
   free_response_rooms: ''
   allowed_rooms: ''
 approvals:
-  mode: smart
+  mode: 'off'
   timeout: 60
   cron_mode: deny
   mcp_reload_confirm: true
   destructive_slash_confirm: true
 command_allowlist:
-  - script execution via -e/-c flag
-  - overwrite project env/config via redirection
-  - kill hermes/gateway process (self-termination)
-  - shell command via -c/-lc flag
-  - delete in root path
-quick_commands: {}
-personalities: {}
+- script execution via -e/-c flag
+- overwrite project env/config via redirection
+- kill hermes/gateway process (self-termination)
+- shell command via -c/-lc flag
+- delete in root path
+plugins:
+  enabled:
+  - external-agents
+  - gate-control
+  - hermes-memory-ui
+  - hindsight
+  - homeassistant
+  disabled: []
 security:
   allow_private_urls: false
-  redact_secrets: true
-  tirith_enabled: true
-  tirith_path: tirith
-  tirith_timeout: 5
-  tirith_fail_open: true
+  redact_secrets: '[REDACTED]'
   website_blocklist:
     enabled: false
     domains: []
@@ -423,7 +427,6 @@ security:
   allow_lazy_installs: true
 cron:
   wrap_response: true
-  max_parallel_jobs: null
 kanban:
   dispatch_in_gateway: true
   dispatch_interval_seconds: 60
@@ -448,10 +451,10 @@ logging:
 model_catalog:
   enabled: true
   url: https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
-  ttl_hours: 24
-  providers: {}
 network:
   force_ipv4: false
+streaming:
+  enabled: false
 sessions:
   auto_prune: false
   retention_days: 90
@@ -461,6 +464,7 @@ onboarding:
   seen:
     busy_input_prompt: true
     tool_progress_prompt: true
+    openclaw_residue_cleanup: true
 updates:
   pre_update_backup: false
   backup_keep: 5
@@ -469,101 +473,130 @@ lsp:
   wait_mode: document
   wait_timeout: 5
   install_strategy: auto
-  servers: {}
 x_search:
   model: grok-4.20-reasoning
   timeout_seconds: 180
   retries: 2
-_config_version: 23
+_config_version: 51
 session_reset:
   mode: both
   idle_minutes: 1440
   at_hour: 4
 group_sessions_per_user: true
-streaming:
-  enabled: false
 platform_toolsets:
   cli:
-    - hermes-cli
+  - hermes-cli
   telegram:
-    - hermes-telegram
+  - hermes-telegram
   discord:
-    - hermes-discord
+  - hermes-discord
   whatsapp:
-    - hermes-whatsapp
+  - hermes-whatsapp
   slack:
-    - hermes-slack
+  - hermes-slack
   signal:
-    - hermes-signal
+  - hermes-signal
   homeassistant:
-    - hermes-homeassistant
+  - hermes-homeassistant
   qqbot:
-    - hermes-qqbot
+  - hermes-qqbot
   yuanbao:
-    - hermes-yuanbao
+  - hermes-yuanbao
   teams:
-    - hermes-teams
+  - hermes-teams
   google_chat:
-    - hermes-google_chat
-custom_providers:
-  - name: apikeyfun
-    base_url: https://api.apikey.fun
-    api_key: <REDACTED>
-    api_mode: anthropic_messages
-    models:
-      claude-sonnet-4-6:
-        name: ''
-    model: claude-sonnet-4-6
-  - name: xuedingtoken
-    base_url: https://xuedingtoken.com
-    api_key: <REDACTED>
-    models:
-      claude-sonnet-4-6:
-        name: claude-sonnet-4-6
-    api_mode: anthropic_messages
-    model: claude-sonnet-4-6
-  - name: openai-codex
-    base_url: https://chatgpt.com/backend-api/codex
-    network_mode: env
-  - name: aca
-    base_url: http://127.0.0.1:3000/openai-codex-oauth/v1
-    api_key: <REDACTED>
-    models:
-      gpt-5.5:
-        name: gpt-5.5
-    model: gpt-5.5
-  - name: cpa
-    base_url: http://127.0.0.1:8317
-    api_key: <REDACTED>
-    models:
-      gpt-5.5:
-        name: ''
-    api_mode: anthropic_messages
-    model: gpt-5.5
+  - hermes-google_chat
+custom_providers: []
 mcp_servers:
-  memorycore:
-    enabled: true
-    timeout: 120
-    connect_timeout: 60
-    url: http://127.0.0.1:8318/mcp
-    headers:
-      X-Agent-Id: hermes
+  todoist:
+    url: https://ai.todoist.net/mcp
+    auth: oauth
+    enabled: false
 platforms:
   api_server:
     extra:
       port: 8642
       host: 127.0.0.1
-    enabled: true
-    key: ''
+    enabled: false
+    key: '[REDACTED]'
     cors_origins: '*'
-plugins:
-  enabled:
-    - external-agents
-    - mcore-memory
-  disabled: []
-
+  weixin:
+    enabled: true
 hooks:
   pre_llm_call:
-    - command: python3 /home/advancer/.hermes/agent-hooks/superpowers-intent-gate.py
-      timeout: 5
+  - command: python3 "./.hermes/agent-hooks/superpowers-intent-gate.py"
+    timeout: 5
+  post_llm_call:
+  - command: python3 "./.hermes/agent-hooks/notify_weixin_ilink.py"
+    timeout: 10
 hooks_auto_accept: true
+known_plugin_toolsets:
+  acp:
+  - homeassistant
+  webhook:
+  - homeassistant
+_left_core_scoped:
+- homeassistant
+_left_core_installed:
+- homeassistant
+gateway:
+  multiplex_profiles: true
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+    offer_version: 2
+providers:
+  cpa:
+    api: http://127.0.0.1:8317/v1
+    name: cpa
+    models:
+      gemini-3.8-flash:
+        name: gemini-3.8-flash
+        context_length: 1000000
+      gemini-3.7-flash:
+        context_length: 1000000
+        name: gemini-3.7-flash
+    default_model: gemini-3.8-flash
+    base_url: http://127.0.0.1:8317/v1
+    model: gemini-3.8-flash
+    discover_models: true
+    api_mode: chat_completions
+    key_env: '[REDACTED]'
+  cpa-cloud:
+    api: http://35.194.237.91:8317/v1
+    name: cpa-cloud
+    models:
+      gemini-3.8-flash:
+        name: gemini-3.8-flash
+        context_length: 1000000
+      deepseek-v4.1-flash:
+        name: deepseek-v4.1-flash
+        context_length: 1000000
+      glm-5.3-flash:
+        name: glm-5.3-flash
+        context_length: 1000000
+      gpt-5.6-luna:
+        context_length: 1000000
+        name: gpt-5.6-luna
+      GLM-5.3:
+        context_length: 1000000
+        name: GLM-5.3
+    default_model: gemini-3.8-flash
+    base_url: http://35.194.237.91:8317/v1
+    model: gemini-3.8-flash
+    discover_models: true
+    key_env: '[REDACTED]'
+quick_commands:
+  gate:
+    type: exec
+    command: '"./.local/bin/gate" status'
+  gate-auto:
+    type: exec
+    command: '"./.local/bin/gate" auto'
+  gate-off:
+    type: exec
+    command: '"./.local/bin/gate" off'
+  gate-on:
+    type: exec
+    command: '"./.local/bin/gate" on'

@@ -1,6 +1,6 @@
-Hermes as general router not SDLC-only. Preserve local UI customizations in mcore/CPA frontend work.
+Hermes as general router not SDLC-only. Keep mcore/CPA local UI tweaks. 方案/实施细节文档一律交付HTML版(output目录)。
 §
-User prefers durable learning in lmmcp/MCP plus class-level skill updates. Local Hermes config should be versioned in /home/advancer/project/hermes-local-agent-configs as a sanitized repo excluding secrets/runtime state, with ITERATION.md current.
+User prefers durable learning in lmmcp/MCP plus class-level skill updates. Local Hermes config should be versioned in ./project/hermes-local-agent-configs as a sanitized repo excluding secrets/runtime state, with ITERATION.md current.
 §
 用户希望项目可被他人复用；实现时要优先考虑兼容性、通用性、可移植部署脚本，以及运行命令的执行目录。路径、IP、用户名、项目根目录等不应硬编码，应支持参数、环境变量或自动发现。
 §
@@ -10,10 +10,24 @@ User prefers durable learning in lmmcp/MCP plus class-level skill updates. Local
 §
 千帆报表偏好: 严禁非标bi_*表; 部门对齐sp_cloud.sys_dept规整至第二级中心(禁主观改动原始数据); 全局大盘全量统计(含admin/自测); 部门/人员支持已发布与全量双视角切换; 筛选栏严格单一行水平排列; 未发布不等于0调用(Prometheus与obs双源兜底)。
 §
-Hermes与CPA联动必须由cc-switch统一管理激活，不得绕过cc-switch直接硬编码改动配置。
+Hermes与CPA联动由cc-switch统一管理激活。配置库本机路径使用可移植相对路径；Hindsight不强制回环/SSH，用户选择HTTP IP直连。
 §
-命令与安全偏好: 排障或操作命令必须单步原子给出，严禁 && 或分号组合; 严禁使用第三方不可信免费穿透传输含Key/敏感数据的明文业务(防抓包泄露); 敏感服务必走自建SSH加密隧道或本地回环; 公网严禁暴露无认证Shell终端; 凭据文件收紧权限(600/700); 偏好大厂纯用户态免tun方案。
+命令与安全偏好: 排障或操作命令必须单步原子给出，严禁 && 或分号组合; 严禁使用第三方不可信免费穿透传输含Key/敏感数据的明文业务(防抓包泄露); 公网严禁暴露无认证Shell终端; 凭据文件收紧权限(600/700); 偏好大厂纯用户态免tun方案。
 §
 受控公司电脑约束与桌面规范：用户使用受控公司电脑，严禁安装本地后台服务、第三方虚拟网卡驱动（如 TUN/TAP），严禁在 Windows 桌面上生成未明确要求的快捷方式（.rdp 等桌面图标，用户不喜欢桌面杂乱），必须仅使用系统原生工具（mstsc、原生终端 ssh）。排障或调试时严禁直接通过反向隧道流式传输大文件（易触发 8MB 断流与守护误杀）。
 §
 UI/桌面偏好：偏好macOS Light浅白风格(#f5f5f7底色、白底黑字终端、彩色交通灯按钮左置)。严禁浏览器原生alert/confirm，交互提示与诊断必须用全局模态弹窗或Toast。远程桌面用纯色背景防重绘卡顿。
+§
+网关与测试安全铁律：严禁自发向远程/生产网关（如 35.236.134.50）发送未经审计的盲打测试请求或黑盒探测任务，杜绝污染远程网关的请求健康与监控指标；Claude Code 生产调用严格由用户终端主导并精确遵循其原生配置。
+§
+网关与多Agent交互铁律: 严禁向生产网关盲发测试探针或重试流量(防污染网关监控与健康记录); 终端已有长周期活跃热会话时, 优先由用户在终端操作或由Hermes直接定点修改交付, 绝不后台盲目派发竞争配额; 原型图开发严格消灭原生alert/confirm改用微透Toast、数量指标严格与列表100%对齐、审批状态必须联动更新。
+§
+多Agent协作与终端偏好：偏好人机协同可视工位（手动唤起多个可见Claude/Codex终端窗口或tmux分屏），由Hermes作为主控大脑派发任务并监控汇总；既保障执行过程实时肉眼可见，又复用终端交互热会话的Prompt Cache，避免无头脚本冷启动巨量Token击穿Gemini 429限频。
+§
+研发与环境原则(1008): 遇到环境或依赖问题时严禁削足适履降级妥协功能实现(用户严令"不要为此妥协，按照原来的实现，怎么方便怎么来，有问题修复就好了，别总犯")；严格区分外部终端宿主环境与Hermes内置沙盒，CLI命令与系统级入口必须对齐宿主原生/bin/python3与~/.local/bin，严禁混淆注入或依赖内置沙盒环境。
+§
+QAI与MaxKB实施偏好: MaxKB数据集成坚持分步实施——先在应用运营看板部分集成，之后再分阶段入湖并集成高层汇报视图; 外部对标人均消耗严格以接口实际返回的有使用记录人数为分母(而非在册总人数), 且对标卡片底部需显式展示总消耗Token与活跃人数。
+§
+TUI/CLI交互偏好: 严格单一排他高光(仅当前活动栏高亮，其余栏保持深灰防眼花); 连续按两次Ctrl-C直接秒退免阻断确认弹窗; 全局控制台命令行与内层智能体终端严格解耦; 集群拉起必须支持读取与自选配置而非代码写死默认值。
+§
+任务列表与输出偏好: todo_list标题设立后固定不改字、不设顶层父项占in_progress、仅在任务开工/完工时更新状态；严禁内部Thinking Process混入可见正文。

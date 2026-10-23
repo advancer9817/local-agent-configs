@@ -83,7 +83,7 @@ def compute():
     fallback_dur_ms = inp.get("cost", {}).get("total_duration_ms", 0)
 
     if (not transcript_path or not os.path.isfile(transcript_path)) and session_id != "default":
-        matches = glob.glob(f"/home/advancer/.claude/projects/*/{session_id}.jsonl")
+        matches = glob.glob(os.path.join(os.path.expanduser("~"), ".claude", "projects", "*", f"{session_id}.jsonl"))
         if matches:
             transcript_path = matches[0]
 

@@ -71,7 +71,7 @@ def _get_claude_env() -> dict[str, str]:
             pass
 
     if "ANTHROPIC_BASE_URL" not in env:
-        env["ANTHROPIC_BASE_URL"] = "http://35.236.134.50:8317"
+        env["ANTHROPIC_BASE_URL"] = "http://35.194.237.91:8317"
     if "ANTHROPIC_MODEL" not in env:
         env["ANTHROPIC_MODEL"] = "gemini-3.8-flash[1M]"
 

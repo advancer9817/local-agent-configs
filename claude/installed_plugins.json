@@ -4,7 +4,7 @@
     "superpowers@superpowers-marketplace": [
       {
         "scope": "user",
-        "installPath": "/home/advancer/.claude/plugins/cache/superpowers-marketplace/superpowers/6.1.1",
+        "installPath": "./.claude/plugins/cache/superpowers-marketplace/superpowers/6.1.1",
         "version": "6.1.1",
         "installedAt": "2026-07-03T09:40:38.448Z",
         "lastUpdated": "2026-07-03T09:40:38.448Z",

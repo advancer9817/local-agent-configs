@@ -8,10 +8,7 @@
       "Bash(NO_PROXY=\"*\" no_proxy=\"*\" HTTP_PROXY=\"\" HTTPS_PROXY=\"\" http_proxy=\"\" https_proxy=\"\" git pull *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(mcore restart *)",
-      "Bash(mcore status *)",
-      "Bash(/bin/bash /home/advancer/gdrive/claude-shared/statusline.sh)",
-      "mcp__memorycore__memory_add"
+      "Bash(bash \"./.claude/statusline.sh\")"
     ]
   },
   "spinnerTipsEnabled": false
