@@ -21,3 +21,18 @@ handoff/.lock
 venv/
 *cache.json
 *_cache.json
+
+# Hindsight initializer build products and local runtime data
+/output/hindsight-initializer/
+/apps/hindsight-initializer/node_modules/
+/apps/hindsight-initializer/test-results/
+/apps/hindsight-initializer/screenshots/
+/apps/hindsight-initializer/*.exe
+/apps/hindsight-initializer/*.test
+/apps/hindsight-initializer/hindsight-initializer
+/apps/hindsight-initializer/settings.json
+/apps/hindsight-initializer/launcher.json
+/apps/hindsight-initializer/scans/
+/apps/hindsight-initializer/uploads/
+/apps/hindsight-initializer/candidates/
+/apps/hindsight-initializer/backups/

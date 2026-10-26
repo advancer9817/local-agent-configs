@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hindsight · 初始化与接入</title>
+  <link rel="icon" href="/brand.png">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/lucide.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="/brand.png" alt="" width="32" height="32"><div><strong>Hindsight</strong><span>初始化与接入</span></div></div>
+    <div class="top-actions"><span class="local"><i data-lucide="lock-keyhole"></i>本机</span><button id="browser" class="icon" title="在浏览器中打开" aria-label="在浏览器中打开"><i data-lucide="external-link"></i></button><button id="exit" class="icon" title="退出" aria-label="退出"><i data-lucide="power"></i></button></div>
+  </header>
+  <div class="shell">
+    <nav class="steps" aria-label="初始化步骤">
+      <button data-step="connection" class="step active"><span>01</span><i data-lucide="plug"></i><b>连接与认证</b></button>
+      <button data-step="sources" class="step"><span>02</span><i data-lucide="folder-search"></i><b>提取范围</b></button>
+      <button data-step="archive" class="step"><span>03</span><i data-lucide="archive"></i><b>本地归档</b></button>
+      <button data-step="clients" class="step"><span>04</span><i data-lucide="workflow"></i><b>智能体接入</b></button>
+    </nav>
+    <main>
+      <section id="connection" class="view">
+        <div class="section-heading"><div><p class="eyebrow">CONNECTION</p><h1>连接与认证</h1></div><span id="platform" class="badge">本地客户端</span></div>
+        <form id="connection-form">
+          <h2><i data-lucide="server"></i>Hindsight 远端</h2>
+          <div class="fields">
+            <label class="wide">服务地址<input name="api_url" type="url" placeholder="https://hindsight.example.com" autocomplete="off"></label>
+            <label>Bank ID<input name="bank_id" autocomplete="off" required></label>
+            <label>认证令牌<div class="secret"><input name="mcp_token" type="password" autocomplete="new-password" placeholder="输入 Bearer Token"><button type="button" class="icon reveal" title="显示或隐藏令牌" aria-label="显示或隐藏令牌"><i data-lucide="eye"></i></button></div></label>
+          </div>
+          <div class="section-action"><span id="credential-note" class="muted">凭据仅保存在本机</span><button type="button" id="test-remote" class="secondary"><i data-lucide="cable"></i>测试连接</button></div>
+          <h2 class="divided"><i data-lucide="sparkles"></i>压缩模型</h2>
+          <div class="fields">
+            <label class="wide">兼容接口地址<input name="model_url" type="url" placeholder="https://provider.example.com/v1" autocomplete="off"></label>
+            <label>模型名称<input name="model" placeholder="模型服务商提供的模型 ID" autocomplete="off"></label>
+            <label>模型密钥<div class="secret"><input name="model_key" type="password" autocomplete="new-password" placeholder="输入 API Key；本地模型可留空"><button type="button" class="icon reveal" title="显示或隐藏密钥" aria-label="显示或隐藏密钥"><i data-lucide="eye"></i></button></div></label>
+          </div>
+          <div class="section-action"><span class="muted"><i data-lucide="shield-check"></i>扫描不联网；压缩时正文会发送给此模型服务</span><button type="button" id="test-model" class="secondary"><i data-lucide="activity"></i>测试模型</button></div>
+          <div class="footer-actions"><button type="submit" class="primary"><i data-lucide="save"></i>保存并继续<i data-lucide="arrow-right"></i></button></div>
+        </form>
+      </section>
+
+      <section id="sources" class="view" hidden>
+        <div class="section-heading"><div><p class="eyebrow">SOURCES</p><h1>提取范围</h1></div><button id="save-sources" class="secondary"><i data-lucide="save"></i>保存范围</button></div>
+        <h2><i data-lucide="messages-square"></i>智能体历史会话</h2>
+        <div id="agent-list" class="agent-list"></div>
+        <div class="heading-row"><h2><i data-lucide="folders"></i>本地文档目录</h2><button id="add-root" class="secondary compact"><i data-lucide="folder-plus"></i>添加目录</button></div>
+        <div id="roots"></div>
+        <div id="roots-empty" class="empty-inline"><i data-lucide="folder-open"></i>尚未选择文档目录</div>
+        <div class="fields divided">
+          <label>排除最近修改（小时）<input id="idle-hours" type="number" min="1" max="8760"></label>
+          <label>单文件大小上限（MB）<input id="max-size" type="number" min="1" max="100"></label>
+        </div>
+        <p class="muted policy"><i data-lucide="shield"></i>跳过凭据、配置、备份、依赖目录和符号链接。支持 MD、TXT、CSV、HTML、Office；PDF 需本机 pdftotext。</p>
+        <div class="footer-actions"><button id="scan" class="primary"><i data-lucide="scan-search"></i>扫描本地来源<i data-lucide="arrow-right"></i></button></div>
+      </section>
+
+      <section id="archive" class="view" hidden>
+        <div class="section-heading"><div><p class="eyebrow">LOCAL ARCHIVE</p><h1>本地归档</h1></div><button id="rescan" class="icon" title="重新扫描" aria-label="重新扫描"><i data-lucide="refresh-cw"></i></button></div>
+        <div class="metrics"><div><span>待处理来源</span><strong id="metric-ready">0</strong></div><div><span>来源字符</span><strong id="metric-chars">0</strong></div><div><span>已核验成品</span><strong id="metric-approved">0</strong></div><div><span>成品字符</span><strong id="metric-output">0</strong></div></div>
+        <div class="toolbar"><div class="tabs" role="tablist"><button class="active" id="tab-sources" role="tab" aria-selected="true">来源 <span id="source-count">0</span></button><button id="tab-products" role="tab" aria-selected="false">成品 <span id="product-count">0</span></button></div><input id="filter" type="search" placeholder="按标题、路径筛选" aria-label="筛选来源和成品"></div>
+        <div id="source-panel">
+          <div class="selection"><label><input id="select-all" type="checkbox">全选待处理</label><span id="selection-count" class="muted">已选 0 篇</span></div>
+          <div class="table-wrap"><table><thead><tr><th class="check-col"></th><th>来源 / 项目</th><th>类型</th><th>字符</th><th>状态</th><th></th></tr></thead><tbody id="source-rows"></tbody></table></div>
+          <div id="source-empty" class="empty"><i data-lucide="files"></i><span>尚无扫描结果</span></div>
+          <div class="footer-actions"><button id="compact" class="primary"><i data-lucide="combine"></i>压缩所选来源</button></div>
+        </div>
+        <div id="product-panel" hidden>
+          <div class="table-wrap"><table><thead><tr><th>成品标题</th><th>原始 → 成品</th><th>状态</th><th></th></tr></thead><tbody id="product-rows"></tbody></table></div>
+          <div id="product-empty" class="empty"><i data-lucide="archive"></i><span>暂无精简成品</span></div>
+          <div class="upload-consent"><label><input id="confirm-upload" type="checkbox">确认上传已核验成品到 <b id="target-bank"></b></label><span class="muted">仅上传精简稿。不会上传原文，也不会删除远端已有文档。</span></div>
+          <div class="footer-actions"><button id="upload" class="primary"><i data-lucide="cloud-upload"></i>上传精简成品</button></div>
+        </div>
+      </section>
+
+      <section id="clients" class="view" hidden>
+        <div class="section-heading"><div><p class="eyebrow">AGENT CONNECTIONS</p><h1>智能体接入</h1></div></div>
+        <div id="client-summary" class="client-summary"></div>
+        <div class="callout"><i data-lucide="shield-check"></i><div><strong>保留现有配置</strong><p>为所选智能体注册 Hindsight MCP。修改前自动备份；已有钩子与其他 MCP 连接保持不变。认证令牌不写入智能体配置文件。</p></div></div>
+        <div class="path-detail"><span>本地状态与归档目录</span><code id="state-root"></code></div>
+        <div class="footer-actions split"><button id="restore" class="secondary"><i data-lucide="undo-2"></i>恢复上次接入配置</button><button id="install" class="primary"><i data-lucide="plug-zap"></i>配置所选智能体</button></div>
+      </section>
+    </main>
+    <aside class="activity"><div class="activity-heading"><h2><i data-lucide="list-checks"></i>执行记录</h2><span id="job-badge" class="badge">待命</span></div><div id="job-error" role="alert" hidden></div><div id="logs"><p class="log-placeholder">暂无执行记录</p></div><button id="cancel" class="secondary" hidden><i data-lucide="square"></i>取消任务</button><div class="activity-bottom"><i data-lucide="hard-drive"></i><span>本地原始记录始终保留</span></div></aside>
+  </div>
+  <div id="toast" role="status" hidden></div>
+  <dialog id="preview-dialog"><div class="dialog-heading"><h2 id="preview-title">正文预览</h2><button class="icon close-dialog" title="关闭预览" aria-label="关闭预览"><i data-lucide="x"></i></button></div><pre id="preview-text"></pre><p id="preview-note" class="muted"></p></dialog>
+  <dialog id="browse-dialog"><div class="dialog-heading"><h2>选择目录</h2><button class="icon close-dialog" title="关闭目录选择" aria-label="关闭目录选择"><i data-lucide="x"></i></button></div><div class="directory-address"><button id="folder-up" class="icon" title="上一级" aria-label="上一级"><i data-lucide="arrow-up"></i></button><input id="folder-address" aria-label="当前目录"><button id="folder-go" class="icon" title="打开目录" aria-label="打开目录"><i data-lucide="arrow-right"></i></button></div><div id="folder-items"></div><div class="footer-actions"><button id="folder-select" class="primary"><i data-lucide="folder-check"></i>选择此目录</button></div></dialog>
+</body>
+</html>

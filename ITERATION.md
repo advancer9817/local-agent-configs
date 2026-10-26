@@ -1616,3 +1616,27 @@ git -C /home/advancer/project/local-agent-configs status
 
 - 普通合并 origin/main，保留双方提交与全部迭代记录，不强推。保留远端双机交接工具、沟通规则简化及 Codex 权限设置；保留本次路径可移植化与解除回环限制。
 - 状态栏保留双方功能，个人路径按 HOME 发现。合并后路径恢复 4 项测试及双机交接 45 项离线测试全部通过；未执行真实交接、上传或客户端覆盖。非测试文件密钥样式扫描无命中，凭据/缓存/会话库继续排除。
+
+## 2026-10-26 合入 Hindsight 可视化初始化应用
+
+### 范围
+
+- 将本轮开发的初始化应用归入 `apps/hindsight-initializer/`，不另建仓库，不替换 `scripts/hindsight-hook.py` 或现有模板恢复、双机交接工具。
+- Windows 使用 WebView2 独立窗口并保留浏览器模式，Linux 使用本机网页；HTML/CSS/JavaScript、字体、图标内嵌于 Go 可执行文件。
+- 支持远端地址与认证、模型配置、Codex/Claude Code/Hermes 历史来源及文档目录选择、本地脱敏归档、项目内精确去重、分段提炼与归并、独立核验、显式确认上传和 MCP 配置备份恢复。
+- 保留跨扫描批次的核验缓存、上传台账和异步操作身份。客户端原文不删除；不自动删除远端历史文档或改写实时留存游标。
+
+### 仓库整合
+
+- 根 README 增加应用入口和构建命令，`docs/hindsight-initializer.md` 说明架构及其与现有脚本的边界。
+- 构建输出到 Git 忽略的 `output/hindsight-initializer/`；程序、压缩包、客户端认证、原始会话、归档成品和运行台账均不作为源码提交。
+- 浏览器测试自行启动临时应用和模拟服务，不依赖开发机器的固定预览地址。Go 单元测试隔离 HOME，避免读取真实连接配置。
+- 补充仅在 Windows 执行的 DPAPI 往返测试。字体、图标与 Go 依赖许可证随源码纳管。
+
+### 验证与边界
+
+- 应用目录下 `go test -race ./...` 的 15 项测试通过，`go vet ./...` 通过；`bash build.sh` 从仓库根目录成功构建 Windows GUI EXE 与 Linux 程序。
+- `SETUP_BINARY=<测试构建> node ui_test.cjs` 使用临时应用及模拟服务通过扫描、去重、脱敏正文预览、压缩核验、上传回读和重复上传跳过；验证 1180、840、390 像素视口。
+- 既有 `scripts/test_portable_configs.py` 的 4 项测试与 `tests/test_hermes_handoff.py` 的 45 项测试全部通过；原有配置恢复和双机交接行为未改动。
+- 包含新增 DPAPI 测试的 Windows 测试程序已交叉编译，尚未在 Windows 执行。源码扫描未发现新增真实凭据、运行台账或绑定开发机器的路径；依赖许可证按上游原文保留。
+- Windows EXE 交叉编译不代表 Windows 真机上的 WebView2/DPAPI 已验收。当前环境只能验证 Linux 浏览器流程、模拟上传和跨平台构建，不自动执行真实文档导入或覆盖真实客户端配置。

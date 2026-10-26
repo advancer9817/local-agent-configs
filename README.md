@@ -4,6 +4,25 @@ Sanitized backup of this machine's local AI Agent configurations.
 
 Each Agent maintains its own dedicated subfolder to keep configurations cleanly isolated and manageable.
 
+## Hindsight 可视化初始化
+
+新客户端首次接入可使用 [Hindsight 初始化应用](apps/hindsight-initializer/README.md)：
+
+- Windows 默认独立 EXE 窗口，也支持浏览器模式；Linux 使用本机网页。
+- 配置远端地址、Bank、认证及压缩模型；选择 Codex、Claude Code、Hermes 的历史会话和文档目录。
+- 本地扫描、脱敏、精确去重、语义压缩与独立核验，预览后明确确认上传精简成品。
+- 备份并注册所选智能体的 MCP；不覆盖现有实时钩子，不删除远端原文。
+- 运行数据与凭据留在客户端，编译产物不纳入源码仓库。Windows 构建仍需真机验收。
+
+架构、与模板恢复/双机交接的区别见 [接入说明](docs/hindsight-initializer.md)。
+源码构建（Go 1.26）：
+
+```bash
+bash apps/hindsight-initializer/build.sh
+```
+
+产物输出到仓库的 `output/hindsight-initializer/`，无需更改现有恢复脚本。
+
 ## Hermes 公司 / 家里双机交接
 
 **先读：[完整使用指南](docs/hermes-handoff.md)。**
@@ -26,6 +45,8 @@ Each Agent maintains its own dedicated subfolder to keep configurations cleanly 
 
 ```text
 local-agent-configs/
+├── apps/
+│   └── hindsight-initializer/ # Windows/Web 初始化应用、扫描压缩、MCP 接入
 ├── claude/             # Claude Code configurations & rules
 │   ├── CLAUDE.md
 │   ├── settings.json
