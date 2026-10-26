@@ -141,10 +141,8 @@ func (a *App) handler() http.Handler {
 			fail(w, errors.New("任务运行中，不能修改配置"))
 			return
 		}
-		if cfg.Token == "" && cfg.API == a.cfg.API {
-			cfg.Token = a.cfg.Token
-		}
-		if cfg.ModelKey == "" && cfg.ModelURL == a.cfg.ModelURL {
+		cfg.ModelURL = normalizeModelURL(cfg.ModelURL)
+		if cfg.ModelKey == "" && cfg.ModelURL == normalizeModelURL(a.cfg.ModelURL) {
 			cfg.ModelKey = a.cfg.ModelKey
 		}
 		if err := cfg.validate(false, false); err != nil {
@@ -195,7 +193,7 @@ func (a *App) handler() http.Handler {
 				if err != nil {
 					return err
 				}
-				a.log("Hindsight 连接与认证通过，文档数：" + fmt.Sprint(res["total_documents"]))
+				a.log("Hindsight API 与 MCP 连接通过，文档数：" + fmt.Sprint(res["total_documents"]))
 			} else {
 				var out struct {
 					OK bool `json:"ok"`
@@ -256,6 +254,9 @@ func (a *App) handler() http.Handler {
 			return
 		}
 		err := a.start("compact", func(ctx context.Context, c Config) error {
+			if err := c.validate(false, true); err != nil {
+				return err
+			}
 			a.mu.Lock()
 			inv, dir := a.inventory, a.scanDir
 			a.mu.Unlock()

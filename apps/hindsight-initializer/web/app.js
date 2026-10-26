@@ -42,7 +42,6 @@ function addRoot(value=''){
 function buildConfig(c){
   const form=$('connection-form');
   ['api_url','bank_id','model_url','model'].forEach(name=>form.elements[name].value=c[name] || '');
-  form.elements.mcp_token.placeholder=c.has_token?'已保存，留空保持不变':'输入 Bearer Token';
   form.elements.model_key.placeholder=c.has_model_key?'已保存，留空保持不变':'本地模型可留空';
   $('idle-hours').value=c.idle_hours;$('max-size').value=c.max_file_mb;
   $('agent-list').replaceChildren();
@@ -64,7 +63,7 @@ function configDraft(){
   document.querySelectorAll('.agent').forEach(row=>agents[row.dataset.agent]={enabled:row.querySelector('[type=checkbox]').checked,path:row.querySelector('[type=text]').value.trim()});
   return {
     api_url:f.elements.api_url.value.trim().replace(/\/+$/,''),
-    bank_id:f.elements.bank_id.value.trim(),mcp_token:f.elements.mcp_token.value,
+    bank_id:f.elements.bank_id.value.trim(),
     model_url:f.elements.model_url.value.trim().replace(/\/+$/,''),
     model:f.elements.model.value.trim(),model_key:f.elements.model_key.value,
     agents,document_roots:Array.from($('roots').querySelectorAll('input')).map(e=>e.value.trim()).filter(Boolean),
@@ -74,9 +73,8 @@ function configDraft(){
 async function save(){
   const result=await api('config',configDraft());
   state.config=result.config;
-  $('connection-form').elements.mcp_token.value='';
+  $('connection-form').elements.model_url.value=result.config.model_url || '';
   $('connection-form').elements.model_key.value='';
-  $('connection-form').elements.mcp_token.placeholder=result.config.has_token?'已保存，留空保持不变':'输入 Bearer Token';
   $('connection-form').elements.model_key.placeholder=result.config.has_model_key?'已保存，留空保持不变':'本地模型可留空';
   renderClients();
 }
@@ -114,7 +112,11 @@ function renderSelection(){
   const ready=(state.inventory.sources || []).filter(s=>s.status==='ready');
   $('select-all').checked=ready.length>0 && ready.every(s=>selected.has(s.id));
   $('select-all').indeterminate=selected.size>0 && !$('select-all').checked;
-  $('compact').disabled=busy || selected.size===0;
+  const modelReady=!!state.config.model_url?.trim() && !!state.config.model?.trim();
+  $('compact').disabled=busy || selected.size===0 || !modelReady;
+  $('compact').title=modelReady?'压缩所选来源':'请先配置压缩模型接口地址和模型名称';
+  $('configure-model').hidden=modelReady;
+  $('configure-model').disabled=busy;
 }
 function renderProducts(){
   const products=state.products || [],filter=$('filter').value.toLowerCase();
@@ -174,7 +176,7 @@ async function refresh(){
   const next=await api('state');state=next;
   if(!loaded){
     buildConfig(state.config);$('platform').textContent=state.os==='windows'?'Windows':'Linux / Web';
-    $('credential-note').textContent=state.os==='windows'?'凭据由 Windows DPAPI 加密保存在本机':'凭据保存在本机，文件权限 0600';
+    $('credential-note').textContent=state.os==='windows'?'模型密钥由 Windows DPAPI 加密保存在本机':'模型密钥保存在本机，文件权限 0600';
     loaded=true;renderClients();
   }
   const inv=JSON.stringify(state.inventory);
@@ -224,6 +226,7 @@ $('test-model').onclick=()=>guarded(async()=>{await save();await start('test',{k
 $('add-root').onclick=()=>{const input=addRoot();browse(input);};
 $('scan').onclick=()=>guarded(scan);$('rescan').onclick=()=>guarded(scan);
 $('compact').onclick=()=>guarded(async()=>{await save();await start('compact',{ids:[...selected]});});
+$('configure-model').onclick=()=>{step('connection');const f=$('connection-form');(f.elements.model_url.value.trim()?f.elements.model:f.elements.model_url).focus();};
 $('upload').onclick=()=>guarded(()=>start('upload',{confirm:$('confirm-upload').checked}));
 $('confirm-upload').onchange=renderProducts;
 $('install').onclick=()=>guarded(async()=>{await save();await start('install');});

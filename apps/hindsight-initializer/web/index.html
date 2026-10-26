@@ -16,22 +16,21 @@
   </header>
   <div class="shell">
     <nav class="steps" aria-label="初始化步骤">
-      <button data-step="connection" class="step active"><span>01</span><i data-lucide="plug"></i><b>连接与认证</b></button>
+      <button data-step="connection" class="step active"><span>01</span><i data-lucide="plug"></i><b>连接设置</b></button>
       <button data-step="sources" class="step"><span>02</span><i data-lucide="folder-search"></i><b>提取范围</b></button>
       <button data-step="archive" class="step"><span>03</span><i data-lucide="archive"></i><b>本地归档</b></button>
       <button data-step="clients" class="step"><span>04</span><i data-lucide="workflow"></i><b>智能体接入</b></button>
     </nav>
     <main>
       <section id="connection" class="view">
-        <div class="section-heading"><div><p class="eyebrow">CONNECTION</p><h1>连接与认证</h1></div><span id="platform" class="badge">本地客户端</span></div>
+        <div class="section-heading"><div><p class="eyebrow">CONNECTION</p><h1>连接设置</h1></div><span id="platform" class="badge">本地客户端</span></div>
         <form id="connection-form">
           <h2><i data-lucide="server"></i>Hindsight 远端</h2>
           <div class="fields">
             <label class="wide">服务地址<input name="api_url" type="url" placeholder="https://hindsight.example.com" autocomplete="off"></label>
-            <label>Bank ID<input name="bank_id" autocomplete="off" required></label>
-            <label>认证令牌<div class="secret"><input name="mcp_token" type="password" autocomplete="new-password" placeholder="输入 Bearer Token"><button type="button" class="icon reveal" title="显示或隐藏令牌" aria-label="显示或隐藏令牌"><i data-lucide="eye"></i></button></div></label>
+            <label class="wide">Bank ID<input name="bank_id" autocomplete="off" required></label>
           </div>
-          <div class="section-action"><span id="credential-note" class="muted">凭据仅保存在本机</span><button type="button" id="test-remote" class="secondary"><i data-lucide="cable"></i>测试连接</button></div>
+          <div class="section-action"><button type="button" id="test-remote" class="secondary"><i data-lucide="cable"></i>测试连接</button></div>
           <h2 class="divided"><i data-lucide="sparkles"></i>压缩模型</h2>
           <div class="fields">
             <label class="wide">兼容接口地址<input name="model_url" type="url" placeholder="https://provider.example.com/v1" autocomplete="off"></label>
@@ -39,6 +38,7 @@
             <label>模型密钥<div class="secret"><input name="model_key" type="password" autocomplete="new-password" placeholder="输入 API Key；本地模型可留空"><button type="button" class="icon reveal" title="显示或隐藏密钥" aria-label="显示或隐藏密钥"><i data-lucide="eye"></i></button></div></label>
           </div>
           <div class="section-action"><span class="muted"><i data-lucide="shield-check"></i>扫描不联网；压缩时正文会发送给此模型服务</span><button type="button" id="test-model" class="secondary"><i data-lucide="activity"></i>测试模型</button></div>
+          <p id="credential-note" class="muted">模型密钥仅保存在本机</p>
           <div class="footer-actions"><button type="submit" class="primary"><i data-lucide="save"></i>保存并继续<i data-lucide="arrow-right"></i></button></div>
         </form>
       </section>
@@ -66,7 +66,7 @@
           <div class="selection"><label><input id="select-all" type="checkbox">全选待处理</label><span id="selection-count" class="muted">已选 0 篇</span></div>
           <div class="table-wrap"><table><thead><tr><th class="check-col"></th><th>来源 / 项目</th><th>类型</th><th>字符</th><th>状态</th><th></th></tr></thead><tbody id="source-rows"></tbody></table></div>
           <div id="source-empty" class="empty"><i data-lucide="files"></i><span>尚无扫描结果</span></div>
-          <div class="footer-actions"><button id="compact" class="primary"><i data-lucide="combine"></i>压缩所选来源</button></div>
+          <div class="footer-actions"><button id="configure-model" class="secondary" hidden><i data-lucide="settings-2"></i>配置压缩模型</button><button id="compact" class="primary"><i data-lucide="combine"></i>压缩所选来源</button></div>
         </div>
         <div id="product-panel" hidden>
           <div class="table-wrap"><table><thead><tr><th>成品标题</th><th>原始 → 成品</th><th>状态</th><th></th></tr></thead><tbody id="product-rows"></tbody></table></div>
@@ -79,7 +79,7 @@
       <section id="clients" class="view" hidden>
         <div class="section-heading"><div><p class="eyebrow">AGENT CONNECTIONS</p><h1>智能体接入</h1></div></div>
         <div id="client-summary" class="client-summary"></div>
-        <div class="callout"><i data-lucide="shield-check"></i><div><strong>保留现有配置</strong><p>为所选智能体注册 Hindsight MCP。修改前自动备份；已有钩子与其他 MCP 连接保持不变。认证令牌不写入智能体配置文件。</p></div></div>
+        <div class="callout"><i data-lucide="shield-check"></i><div><strong>保留现有配置</strong><p>为所选智能体注册 Hindsight MCP。修改前自动备份；已有钩子与其他 MCP 连接保持不变。</p></div></div>
         <div class="path-detail"><span>本地状态与归档目录</span><code id="state-root"></code></div>
         <div class="footer-actions split"><button id="restore" class="secondary"><i data-lucide="undo-2"></i>恢复上次接入配置</button><button id="install" class="primary"><i data-lucide="plug-zap"></i>配置所选智能体</button></div>
       </section>

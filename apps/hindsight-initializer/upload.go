@@ -71,7 +71,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 					Metadata map[string]string `json:"metadata"`
 				} `json:"retain_params"`
 			}
-			err = requestJSON(ctx, "GET", bankURL(c, "/documents/"+url.PathEscape(s.Document)), c.Token, nil, &fresh)
+			err = requestJSON(ctx, "GET", bankURL(c, "/documents/"+url.PathEscape(s.Document)), "", nil, &fresh)
 			if err == nil {
 				if fresh.Params.Metadata["bootstrap_id"] != p.ID || fresh.Text != string(body) {
 					return errors.New("远端同名文档身份不同，未覆盖")
@@ -82,7 +82,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 			var response struct {
 				Operation string `json:"operation_id"`
 			}
-			if err = requestJSON(ctx, "POST", bankURL(c, "/memories"), c.Token, map[string]any{"items": []any{item}, "async": true, "operation_id": s.Op}, &response); err != nil {
+			if err = requestJSON(ctx, "POST", bankURL(c, "/memories"), "", map[string]any{"items": []any{item}, "async": true, "operation_id": s.Op}, &response); err != nil {
 				return err
 			}
 			if response.Operation != s.Op {
@@ -103,7 +103,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 						Errors int `json:"extraction_errors_count"`
 					} `json:"result_metadata"`
 				}
-				if err = requestJSON(ctx, "GET", bankURL(c, "/operations/"+s.Op), c.Token, nil, &op); err != nil {
+				if err = requestJSON(ctx, "GET", bankURL(c, "/operations/"+s.Op), "", nil, &op); err != nil {
 					ticker.Stop()
 					deadline.Stop()
 					return err
@@ -136,7 +136,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 					Metadata map[string]string `json:"metadata"`
 				} `json:"retain_params"`
 			}
-			if err = requestJSON(ctx, "GET", bankURL(c, "/documents/"+url.PathEscape(s.Document)), c.Token, nil, &doc); err != nil {
+			if err = requestJSON(ctx, "GET", bankURL(c, "/documents/"+url.PathEscape(s.Document)), "", nil, &doc); err != nil {
 				return err
 			}
 			if doc.Text != string(body) || doc.Count < 1 || doc.Params.Metadata["bootstrap_id"] != p.ID {

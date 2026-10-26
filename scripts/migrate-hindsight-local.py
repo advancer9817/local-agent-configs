@@ -12,7 +12,6 @@ BACKUP = Path((STATE / 'latest').read_text())
 BASE = 'http://127.0.0.1:18888'
 BANK = 'mcore-active-snapshot'
 MCP = BASE + '/mcp/' + BANK + '/'
-SSH = [str(windows_tool('System32/OpenSSH/ssh.exe')), '-F', 'NUL', '-i', windows_path(WIN / '.ssh/id_ed25519'), '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'StrictHostKeyChecking=yes', 'root@35.194.237.91']
 manifest = json.loads((BACKUP / 'manifest.json').read_text())
 known = {x['original'] for x in manifest}
 changed = []
@@ -91,21 +90,7 @@ def rules(p):
         text = RULE + '\n' + text
     write(p, text)
 
-# Retrieve only the MCP authentication token over SSH; capture in memory, never stdout.
-remote = '''import pathlib,subprocess,json
-pid=int(subprocess.check_output(["pgrep","-xo","hindsight-api"]).decode().strip())
-env=dict(x.split("=",1) for x in pathlib.Path(f"/proc/{pid}/environ").read_text().split("\\x00") if "=" in x)
-print(json.dumps({"token":env["HINDSIGHT_API_MCP_AUTH_TOKEN"]}))
-'''
-r = subprocess.run(SSH + ['python3 -'], input=remote, capture_output=True, text=True, timeout=25)
-if r.returncode:
-    raise RuntimeError('SSH credential discovery failed (output suppressed)')
-try:
-    token = json.loads(r.stdout)['token']
-except Exception:
-    raise RuntimeError('Remote MCP credential unavailable; output suppressed') from None
-assert token
-connection = {'api_url': BASE, 'bank_id': BANK, 'mcp_url': MCP, 'mcp_token': token, 'timeout': 30}
+connection = {'api_url': BASE, 'bank_id': BANK, 'mcp_url': MCP, 'timeout': 30}
 write_json(HOME / '.config/hindsight/connection.json', connection, True)
 write_json(WIN / '.config/hindsight/connection.json', connection, True)
 
@@ -172,7 +157,7 @@ for home in [HOME, WIN]:
             if isinstance(d.get(key), dict):
                 d[key] = {k:v for k,v in d[key].items() if not old(k) and not old(v)}
         if p == home/'.claude.json':
-            d.setdefault('mcpServers', {})['hindsight'] = {'type':'http','url':MCP,'headers':{'Authorization':'Bearer '+token}}
+            d.setdefault('mcpServers', {})['hindsight'] = {'type':'http','url':MCP}
             for project in d.get('projects', {}).values():
                 if isinstance(project,dict):
                     if isinstance(project.get('mcpServers'),dict):
@@ -180,9 +165,9 @@ for home in [HOME, WIN]:
                     for key in ['enabledMcpjsonServers','disabledMcpjsonServers']:
                         if isinstance(project.get(key),list): project[key]=[v for v in project[key] if not old(v)]
         elif p == home/'.gemini/settings.json':
-            d.setdefault('mcpServers', {})['hindsight']={'httpUrl':MCP,'headers':{'Authorization':'Bearer '+token},'timeout':60000}
+            d.setdefault('mcpServers', {})['hindsight']={'httpUrl':MCP,'timeout':60000}
         elif p == home/'.config/opencode/opencode.json':
-            d.setdefault('mcp', {})['hindsight']={'type':'remote','url':MCP,'headers':{'Authorization':'Bearer '+token},'enabled':True}
+            d.setdefault('mcp', {})['hindsight']={'type':'remote','url':MCP,'enabled':True}
         write_json(p,d,True)
     p=home/'.codex/config.toml'
     if p.exists():
@@ -190,7 +175,7 @@ for home in [HOME, WIN]:
         # Remove only server sections and their nested sections, not trusted project history.
         sections=re.split(r'(?m)(?=^\[)',text)
         sections=[s for s in sections if not (re.match(r'\[mcp_servers\.',s) and (old(s.splitlines()[0]) or re.match(r'\[mcp_servers\.hindsight(?:\]|\.)',s)))]
-        text=''.join(sections).rstrip()+'\n\n[mcp_servers.hindsight]\nurl = '+json.dumps(MCP)+'\nhttp_headers = { Authorization = '+json.dumps('Bearer '+token)+' }\n'
+        text=''.join(sections).rstrip()+'\n\n[mcp_servers.hindsight]\nurl = '+json.dumps(MCP)+'\n'
         tomllib.loads(text)
         write(p,text,True)
     for rel in ['AGENTS.md','.claude/CLAUDE.md','.codex/instructions.md','.codex/AGENTS.md','.gemini/GEMINI.md','.config/opencode/AGENTS.md']:
@@ -227,8 +212,6 @@ Write-Output ("WINDOWS_FILES_WRITTEN="+$items.Count)
     encoded=base64.b64encode(ps.encode('utf-16le')).decode()
     result=subprocess.run([str(windows_tool('System32/WindowsPowerShell/v1.0/powershell.exe')),'-NoProfile','-NonInteractive','-EncodedCommand',encoded],input=json.dumps(windows_writes,ensure_ascii=True),capture_output=True,text=True,errors='replace',timeout=60)
     if result.returncode:
-        err = result.stderr.replace(token, '[REDACTED]')
-        print(err[-3500:])
         raise RuntimeError('Windows native config write failed')
     print(result.stdout.strip())
 

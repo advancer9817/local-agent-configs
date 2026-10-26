@@ -22,7 +22,6 @@ type AgentConfig struct {
 type Config struct {
 	API       string                 `json:"api_url"`
 	Bank      string                 `json:"bank_id"`
-	Token     string                 `json:"mcp_token"`
 	ModelURL  string                 `json:"model_url"`
 	Model     string                 `json:"model"`
 	ModelKey  string                 `json:"model_key"`
@@ -30,7 +29,6 @@ type Config struct {
 	Roots     []string               `json:"document_roots"`
 	IdleHours int                    `json:"idle_hours"`
 	MaxFileMB int                    `json:"max_file_mb"`
-	HasToken  bool                   `json:"has_token,omitempty"`
 	HasKey    bool                   `json:"has_model_key,omitempty"`
 }
 
@@ -111,12 +109,11 @@ func loadConfig(root string) (Config, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		// Import only connection settings. Never modify the existing hook config.
 		var old struct {
-			API   string `json:"api_url"`
-			Bank  string `json:"bank_id"`
-			Token string `json:"mcp_token"`
+			API  string `json:"api_url"`
+			Bank string `json:"bank_id"`
 		}
 		if readJSON(homePath(".config", "hindsight", "connection.json"), &old) == nil {
-			c.API, c.Token = old.API, old.Token
+			c.API = old.API
 			if old.Bank != "" {
 				c.Bank = old.Bank
 			}
@@ -126,30 +123,46 @@ func loadConfig(root string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	c.Token, err = unprotect(c.Token)
-	if err == nil {
-		c.ModelKey, err = unprotect(c.ModelKey)
+	c.ModelURL = normalizeModelURL(c.ModelURL)
+	c.ModelKey, err = unprotect(c.ModelKey)
+	if err != nil {
+		return c, err
+	}
+	var stored map[string]json.RawMessage
+	if err = readJSON(filepath.Join(root, "settings.json"), &stored); err != nil {
+		return c, err
+	}
+	if stored["mcp_token"] != nil || stored["has_token"] != nil {
+		err = saveConfig(root, c)
 	}
 	return c, err
 }
 
 func saveConfig(root string, c Config) error {
 	var err error
-	c.Token, err = protect(c.Token)
-	if err == nil {
-		c.ModelKey, err = protect(c.ModelKey)
-	}
+	c.ModelURL = normalizeModelURL(c.ModelURL)
+	c.ModelKey, err = protect(c.ModelKey)
 	if err != nil {
 		return err
 	}
-	c.HasToken, c.HasKey = false, false
+	c.HasKey = false
 	return atomicJSON(filepath.Join(root, "settings.json"), c)
 }
 
 func publicConfig(c Config) Config {
-	c.HasToken, c.HasKey = c.Token != "", c.ModelKey != ""
-	c.Token, c.ModelKey = "", ""
+	c.HasKey = c.ModelKey != ""
+	c.ModelKey = ""
 	return c
+}
+
+func normalizeModelURL(raw string) string {
+	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	u, err := url.Parse(raw)
+	if err == nil && u.Host != "" && u.Path == "" {
+		u.Path = "/v1"
+		return u.String()
+	}
+	return raw
 }
 
 func (c Config) scopeKey() string {
@@ -185,16 +198,16 @@ func (c Config) validate(requireRemote, requireModel bool) error {
 		if err := validateEndpoint(c.API); err != nil {
 			return fmt.Errorf("Hindsight：%w", err)
 		}
-		if c.Token == "" {
-			return errors.New("请填写 Hindsight 认证令牌")
-		}
 	}
 	if requireModel {
-		if err := validateEndpoint(c.ModelURL); err != nil {
-			return fmt.Errorf("压缩模型：%w", err)
+		if strings.TrimSpace(c.ModelURL) == "" {
+			return errors.New("尚未配置压缩模型接口地址，请在「连接设置」中配置压缩模型")
 		}
 		if strings.TrimSpace(c.Model) == "" {
-			return errors.New("请填写压缩模型名称")
+			return errors.New("尚未配置压缩模型名称，请在「连接设置」中填写模型 ID")
+		}
+		if err := validateEndpoint(c.ModelURL); err != nil {
+			return fmt.Errorf("压缩模型：%w", err)
 		}
 	}
 	for name := range c.Agents {

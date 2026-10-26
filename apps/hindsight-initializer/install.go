@@ -204,8 +204,7 @@ func restoreAgents(root string, log func(string)) error {
 	return os.Remove(filepath.Join(root, "last-install.json"))
 }
 
-// stdioBridge lets all three clients share one protected local credential store.
-// No credentials appear in MCP config files, arguments or stdout logs.
+// stdioBridge forwards MCP sessions without adding remote authentication.
 func stdioBridge(ctx context.Context, c Config, in io.Reader, out io.Writer) error {
 	if err := c.validate(true, false); err != nil {
 		return err
@@ -246,7 +245,6 @@ func stdioBridge(ctx context.Context, c Config, in io.Reader, out io.Writer) err
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Authorization", "Bearer "+c.Token)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		for k, v := range headers {
@@ -261,7 +259,7 @@ func stdioBridge(ctx context.Context, c Config, in io.Reader, out io.Writer) err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			resp.Body.Close()
-			return fmt.Errorf("MCP HTTP %d", resp.StatusCode)
+			return mcpStatusError(resp.StatusCode)
 		}
 		if _, hasID := envelope["id"]; !hasID {
 			resp.Body.Close()

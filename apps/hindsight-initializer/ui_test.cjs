@@ -38,9 +38,10 @@ async function cleanup() {
   mock = http.createServer(async(req,res)=>{
     let raw='';for await(const part of req)raw+=part;
     const body=raw?JSON.parse(raw):{};
+    assert.equal(req.headers.authorization,req.url==='/v1/chat/completions'?'Bearer fixture-model-key':undefined);
     res.setHeader('Content-Type','application/json');
     const json=(x)=>res.end(JSON.stringify(x));
-    if(req.url==='/chat/completions'){
+    if(req.url==='/v1/chat/completions'){
       modelCalls++;
       const prompt=body.messages[1].content;
       let result;
@@ -98,15 +99,19 @@ async function cleanup() {
   await page.waitForFunction(()=>document.querySelector('[name=bank_id]').value.length>0);
   await page.screenshot({path:path.join(output,'01-connection-desktop.png'),fullPage:true});
   await page.locator('[name=api_url]').fill(mockURL);
-  await page.locator('[name=mcp_token]').fill('fixture-token');
+  assert.equal(await page.locator('[name=mcp_token]').count(),0);
   await page.locator('[name=model_url]').fill(mockURL);
   await page.locator('[name=model]').fill('fixture-model');
+  await page.locator('[name=model_key]').fill('fixture-model-key');
   await page.locator('#test-remote').click();
-  await page.waitForFunction(()=>document.querySelector('#logs').textContent.includes('连接与认证通过'));
+  await page.waitForFunction(()=>document.querySelector('#logs').textContent.includes('API 与 MCP 连接通过'));
+  assert.equal(await page.locator('[name=model_url]').inputValue(),mockURL+'/v1');
   await page.waitForFunction(()=>!document.querySelector('#test-model').disabled);
   await page.locator('#test-model').click();
   await page.waitForFunction(()=>document.querySelector('#logs').textContent.includes('模型连接'));
   await page.waitForFunction(()=>!document.querySelector('#test-model').disabled);
+  await page.locator('[name=model_url]').fill('');
+  await page.locator('[name=model]').fill('');
   await page.locator('#connection-form [type=submit]').click();
   for(const agent of ['codex','claude','hermes']){
     await page.locator(`.agent[data-agent="${agent}"] [type=checkbox]`).uncheck();
@@ -120,7 +125,21 @@ async function cleanup() {
   await page.screenshot({path:path.join(output,'02-sources-desktop.png'),fullPage:true});
   await page.locator('#scan').click();
   await page.waitForFunction(()=>document.querySelector('#metric-ready').textContent==='1');
+  await page.waitForFunction(()=>!document.querySelector('#scan').disabled);
+  assert.ok(await page.locator('#compact').isDisabled());
+  await page.locator('#configure-model').click();
+  assert.ok(await page.locator('#connection').isVisible());
+  await page.locator('[name=model_url]').fill(mockURL);
+  await page.locator('[name=model_key]').fill('fixture-model-key');
+  await page.locator('#connection-form [type=submit]').click();
+  await page.locator('.step[data-step="archive"]').click();
+  assert.ok(await page.locator('#compact').isDisabled());
+  await page.locator('#configure-model').click();
+  await page.locator('[name=model]').fill('fixture-model');
+  await page.locator('#connection-form [type=submit]').click();
+  await page.locator('.step[data-step="archive"]').click();
   await page.waitForFunction(()=>!document.querySelector('#compact').disabled);
+  assert.ok(await page.locator('#configure-model').isHidden());
   assert.equal(await page.locator('#source-rows tr').count(),3);
   await page.locator('#source-rows button').first().click();
   await page.locator('#preview-dialog').waitFor({state:'visible'});

@@ -8,7 +8,7 @@
 
 | 入口 | 适用任务 | 是否覆盖既有实时钩子 |
 | --- | --- | --- |
-| Hindsight 初始化应用 | 连接认证、选择历史来源、本地压缩核验、成品上传、注册 MCP | 否 |
+| Hindsight 初始化应用 | 连接测试、选择历史来源、本地压缩核验、成品上传、注册 MCP | 否 |
 | `scripts/restore_to_<agent>.sh` | 在指定 HOME 恢复仓库中的脱敏配置模板 | 按原恢复脚本处理，不由本应用调用 |
 | `scripts/hermes_handoff.py` | 公司/家里电脑轮流使用 Hermes 的加密交接 | 保留既有交接边界，不由本应用调用 |
 | `scripts/hindsight-hook.py` | 已部署客户端的日常会话召回与留存 | 本次并入不替换其实现 |
@@ -22,7 +22,7 @@ Windows WebView2 窗口 / Windows、Linux 浏览器
                          |
                   本机 Go 可执行文件
                          |
-       配置认证 -> 扫描解析 -> 脱敏与项目内精确去重
+       配置连接 -> 扫描解析 -> 脱敏与项目内精确去重
                          |
              分段提炼 -> 同项目归并 -> 独立核验
                          |
@@ -46,6 +46,8 @@ Windows WebView2 窗口 / Windows、Linux 浏览器
 - `output/hindsight-initializer/`：构建产物，已被 Git 忽略。
 
 客户端运行数据默认在 `~/.local/state/hindsight-initializer/`，不放进此仓库。Windows 密钥使用当前用户 DPAPI，Linux 使用权限 0600 的本地文件。
+
+Hindsight 连接不再配置或发送认证令牌；旧版初始化配置里的令牌在加载时清理，模型 API Key 和本地页面授权不受影响。服务端 MCP 需允许无令牌访问，部署方应自行限制网络访问范围。
 
 ## 构建、运行和验证
 

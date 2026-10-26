@@ -153,11 +153,85 @@ func TestSourceLabelsAndUnicodeSplits(t *testing.T) {
 	}
 }
 
+func TestModelOriginUsesVersionedEndpoint(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.URL.Path != "/v1/chat/completions" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer fixture-key" {
+			t.Error("model key not preserved")
+		}
+		respond(w, 200, map[string]any{"choices": []any{map[string]any{
+			"finish_reason": "stop", "message": map[string]string{"content": `{"ok":true}`},
+		}}})
+	}))
+	defer server.Close()
+	for _, base := range []string{server.URL, server.URL + "/", server.URL + "/v1", server.URL + "/v1/"} {
+		c := defaultConfig()
+		c.ModelURL, c.Model, c.ModelKey = base, "fixture", "fixture-key"
+		var out struct {
+			OK bool `json:"ok"`
+		}
+		if err := modelJSON(context.Background(), c, "连接测试", &out); err != nil || !out.OK {
+			t.Errorf("base %s: %v", base, err)
+		}
+	}
+	if calls.Load() != 4 {
+		t.Fatal("unexpected retry or request count", calls.Load())
+	}
+}
+
+func TestModelURLNormalizationPreservesCredentials(t *testing.T) {
+	for _, test := range []struct {
+		name, oldURL, newURL, wantURL string
+		keepKey                       bool
+	}{
+		{"origin", "https://model.example", "https://model.example", "https://model.example/v1", true},
+		{"version-added", "https://model.example", "https://model.example/v1", "https://model.example/v1", true},
+		{"origin-entered", "https://model.example/v1", "https://model.example/", "https://model.example/v1", true},
+		{"custom-prefix", "https://model.example/proxy/v1", "https://model.example/proxy/v1/", "https://model.example/proxy/v1", true},
+		{"host-changed", "https://model.example/v1", "https://other.example", "https://other.example/v1", false},
+		{"path-changed", "https://model.example/custom", "https://model.example/another", "https://model.example/another", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			a, err := newApp(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			a.host = "127.0.0.1:45123"
+			a.cfg.ModelURL, a.cfg.Model, a.cfg.ModelKey = test.oldURL, "fixture", "fixture-key"
+			cfg := publicConfig(a.cfg)
+			cfg.ModelURL = test.newURL
+			body, _ := json.Marshal(cfg)
+			r := httptest.NewRequest("POST", "http://"+a.host+"/api/config", bytes.NewReader(body))
+			r.Header.Set("X-Setup-Token", a.token)
+			w := httptest.NewRecorder()
+			a.handler().ServeHTTP(w, r)
+			if w.Code != http.StatusOK {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			loaded, err := loadConfig(a.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if loaded.ModelURL != test.wantURL || (loaded.ModelKey != "") != test.keepKey {
+				t.Errorf("URL=%s, preserved key=%t", loaded.ModelURL, loaded.ModelKey != "")
+			}
+			if bytes.Contains(w.Body.Bytes(), []byte("fixture-key")) {
+				t.Fatal("model key exposed in config response")
+			}
+		})
+	}
+}
+
 func mockModel(t *testing.T, unsafe bool) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	calls := new(atomic.Int32)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/chat/completions" {
+		if r.URL.Path != "/v1/chat/completions" {
 			t.Errorf("path %s", r.URL.Path)
 		}
 		calls.Add(1)
@@ -284,6 +358,9 @@ func TestUploadReadbackAndIdempotency(t *testing.T) {
 	var doc map[string]any
 	var op string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Error("unexpected Hindsight authentication header")
+		}
 		switch {
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/memories"):
 			submissions.Add(1)
@@ -314,7 +391,6 @@ func TestUploadReadbackAndIdempotency(t *testing.T) {
 	defer server.Close()
 	c := defaultConfig()
 	c.API = server.URL
-	c.Token = "secret"
 	dir := t.TempDir()
 	p := Product{ID: hashText("group"), Title: "测试归档", Content: "验证后的历史记录\n", Status: "approved"}
 	p.SHA = hashText(p.Content)
@@ -346,8 +422,8 @@ func TestMCPBridgeSessionAndProtocol(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := requests.Add(1)
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Error("missing auth")
+		if r.Header.Get("Authorization") != "" {
+			t.Error("unexpected MCP authentication header")
 		}
 		var in map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&in)
@@ -373,7 +449,6 @@ func TestMCPBridgeSessionAndProtocol(t *testing.T) {
 `
 	c := defaultConfig()
 	c.API = server.URL
-	c.Token = "test-token"
 	var out bytes.Buffer
 	if err := stdioBridge(context.Background(), c, strings.NewReader(input), &out); err != nil {
 		t.Fatal(err)
@@ -389,7 +464,7 @@ func TestMCPBridgeSessionAndProtocol(t *testing.T) {
 	}
 }
 
-func TestRemoteTestRequiresMCPAuthentication(t *testing.T) {
+func TestRemoteTestReportsProtectedMCP(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/mcp/") {
 			w.WriteHeader(401)
@@ -400,9 +475,61 @@ func TestRemoteTestRequiresMCPAuthentication(t *testing.T) {
 	defer server.Close()
 	c := defaultConfig()
 	c.API = server.URL
-	c.Token = "wrong"
-	if _, err := checkRemote(context.Background(), c); err == nil {
-		t.Fatal("public stats counted as successful authentication")
+	if _, err := checkRemote(context.Background(), c); err == nil || !strings.Contains(err.Error(), "服务端 MCP 仍要求认证") {
+		t.Fatal("protected MCP was not reported", err)
+	}
+}
+
+func TestRemoteConnectionWithoutAuthentication(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Error("unexpected authentication header")
+		}
+		if strings.Contains(r.URL.Path, "/mcp/") {
+			respond(w, 200, map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{"protocolVersion": "2024-11-05"}})
+			return
+		}
+		respond(w, 200, map[string]any{"total_documents": 1})
+	}))
+	defer server.Close()
+	c := defaultConfig()
+	c.API = server.URL
+	if _, err := checkRemote(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLegacyTokenMigration(t *testing.T) {
+	dir := t.TempDir()
+	c := defaultConfig()
+	c.ModelURL, c.Model, c.ModelKey = "http://127.0.0.1:8317/v1", "fixture", "MODEL_SECRET"
+	if err := saveConfig(dir, c); err != nil {
+		t.Fatal(err)
+	}
+	var old map[string]any
+	if err := readJSON(filepath.Join(dir, "settings.json"), &old); err != nil {
+		t.Fatal(err)
+	}
+	old["mcp_token"], old["has_token"] = "LEGACY_SECRET", true
+	if err := atomicJSON(filepath.Join(dir, "settings.json"), old); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ModelKey != c.ModelKey || loaded.Model != c.Model {
+		t.Fatal("model configuration changed during migration")
+	}
+	for _, config := range []Config{loaded, publicConfig(loaded)} {
+		b, _ := json.Marshal(config)
+		if bytes.Contains(b, []byte("mcp_token")) || bytes.Contains(b, []byte("has_token")) {
+			t.Fatal("removed fields exposed in configuration")
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	if err != nil || bytes.Contains(b, []byte("mcp_token")) || bytes.Contains(b, []byte("has_token")) || bytes.Contains(b, []byte("LEGACY_SECRET")) {
+		t.Fatal("legacy token was not removed from disk", err)
 	}
 }
 
@@ -432,6 +559,64 @@ func TestScopeChangeInvalidatesStagedProducts(t *testing.T) {
 	}
 }
 
+func TestMissingModelPreservesStagedProducts(t *testing.T) {
+	for _, missing := range []string{"address", "name"} {
+		t.Run(missing, func(t *testing.T) {
+			dir := t.TempDir()
+			a, err := newApp(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a.host = "127.0.0.1:45123"
+			a.scanDir = dir
+			a.inventory = Inventory{Sources: []Source{{ID: "source", Status: "ready"}}}
+			a.products = []Product{{ID: "existing-product", Status: "approved"}}
+			a.cfg.ModelURL, a.cfg.Model = "http://127.0.0.1:1/v1", "fixture"
+			if missing == "address" {
+				a.cfg.ModelURL = ""
+			} else {
+				a.cfg.Model = ""
+			}
+			if err := atomicJSON(filepath.Join(dir, "products.json"), a.products); err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest("POST", "http://"+a.host+"/api/compact", strings.NewReader(`{"ids":["source"]}`))
+			r.Header.Set("X-Setup-Token", a.token)
+			w := httptest.NewRecorder()
+			a.handler().ServeHTTP(w, r)
+			if w.Code != http.StatusAccepted {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				a.mu.Lock()
+				job := a.job
+				a.mu.Unlock()
+				if job.Status != "running" {
+					if job.Status != "failed" || !strings.Contains(job.Error, "尚未配置压缩模型") {
+						t.Fatalf("unexpected model validation: %+v", job)
+					}
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("validation did not finish")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			a.mu.Lock()
+			count := len(a.products)
+			a.mu.Unlock()
+			var products []Product
+			if err := readJSON(filepath.Join(dir, "products.json"), &products); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 || len(products) != 1 || products[0].ID != "existing-product" {
+				t.Fatal("model validation discarded staged products")
+			}
+		})
+	}
+}
+
 func TestLocalServerCredentialIsolation(t *testing.T) {
 	dir := t.TempDir()
 	a, err := newApp(dir)
@@ -439,7 +624,6 @@ func TestLocalServerCredentialIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.host = "127.0.0.1:45123"
-	a.cfg.Token = "NEVER_RETURN"
 	a.cfg.ModelKey = "OTHER_SECRET"
 	check := func(token, host, origin string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("GET", "http://"+a.host+"/api/state", nil)
@@ -460,7 +644,7 @@ func TestLocalServerCredentialIsolation(t *testing.T) {
 		}
 	}
 	w := check(a.token, a.host, "")
-	if w.Code != 200 || strings.Contains(w.Body.String(), "NEVER_RETURN") || strings.Contains(w.Body.String(), "OTHER_SECRET") {
+	if w.Code != 200 || strings.Contains(w.Body.String(), "OTHER_SECRET") {
 		t.Fatal("secret leak", w.Code)
 	}
 }
@@ -469,7 +653,6 @@ func TestAgentInstallPreservesAndRestores(t *testing.T) {
 	dir := t.TempDir()
 	c := defaultConfig()
 	c.API = "https://example.com"
-	c.Token = "secret"
 	c.Agents = map[string]AgentConfig{"codex": {true, filepath.Join(dir, "codex")}}
 	path := filepath.Join(c.Agents["codex"].Path, "config.toml")
 	original := `model = "existing"

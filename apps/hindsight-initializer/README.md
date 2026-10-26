@@ -30,8 +30,8 @@ ssh -L 19081:127.0.0.1:19081 user@linux-host
 
 ## 初始化顺序
 
-1. 配置 Hindsight 服务根地址、Bank ID、认证令牌，测试 API 与 MCP 认证。公网仅支持 HTTPS；SSH 隧道可使用本机 HTTP。
-2. 配置兼容 Chat Completions 的压缩模型 API 根地址（通常以 `/v1` 结尾）、模型名及模型密钥，测试连接。Hindsight 令牌和模型密钥互相独立。未配置模型仍可扫描、查看来源、配置 MCP，但不能执行语义压缩。
+1. 配置 Hindsight 服务根地址和 Bank ID，测试 API 与 MCP 连接。客户端不配置或发送 Hindsight 认证令牌，服务端 MCP 须允许无令牌连接。公网仅支持 HTTPS；SSH 隧道可使用本机 HTTP。
+2. 配置兼容 Chat Completions 的压缩模型 API 根地址（通常以 `/v1` 结尾）、模型名及模型密钥，测试连接。仅填写域名时自动补齐 `/v1`，显式填写的自定义路径保持不变。模型密钥仍由模型服务要求。未配置模型仍可扫描、查看来源、配置 MCP，但不能执行语义压缩。
 3. 勾选 Codex、Claude Code、Hermes，修改数据目录，选择文档目录及闲置时长，扫描后预览脱敏正文。
 4. 勾选来源并执行本地压缩，检查成品与复核项，明确勾选上传确认后上传精简稿。
 5. 在“智能体接入”配置所选智能体的 MCP，重启对应智能体。原有实时钩子不做修改，不代表本工具已安装 Hermes 的实时会话钩子。
@@ -56,7 +56,7 @@ ssh -L 19081:127.0.0.1:19081 user@linux-host
 
 本地目录默认是 `~/.local/state/hindsight-initializer/`：
 
-- `settings.json`：地址、认证和扫描范围。Windows 的两个密钥由当前用户 DPAPI 加密；Linux 使用权限 0600 的本地文件，不宣称硬件加密。
+- `settings.json`：地址、模型密钥和扫描范围。Windows 的模型密钥由当前用户 DPAPI 加密；Linux 使用权限 0600 的本地文件，不宣称硬件加密。升级时自动删除旧版 `mcp_token`、`has_token` 字段。
 - `scans/<批次>/raw/`：每篇来源的脱敏 Markdown，与 `inventory.json` 中的会话 ID、路径、项目、指纹关联。
 - `candidates/`：跨扫描批次复用的精确输入指纹缓存、模型提案、独立核验和批准记录。
 - `scans/<批次>/products/`：审核成品；`products.json` 保留来源映射。
@@ -67,13 +67,15 @@ ssh -L 19081:127.0.0.1:19081 user@linux-host
 
 ## MCP 接入
 
-所选智能体的 Hindsight MCP 使用内置 stdio-to-HTTP 桥接。智能体配置里只有本地程序路径和参数，不写令牌。保留其他服务器与现有钩子；修改前保存完整备份。TOML/YAML 使用结构化解析器重写，语义保留，但注释与格式可能变化。
+所选智能体的 Hindsight MCP 使用内置 stdio-to-HTTP 桥接，不添加认证请求头。智能体配置里只有本地程序路径和参数。保留其他服务器与现有钩子；修改前保存完整备份。TOML/YAML 使用结构化解析器重写，语义保留，但注释与格式可能变化。
 
 - Codex：所选目录的 `config.toml`。
 - Claude Code：默认 `~/.claude.json`；自定义目录为该目录下 `.claude.json`。
 - Hermes：所选目录的 `config.yaml`。
 
-API 访问使用 `Authorization: Bearer`，禁用自动重定向，避免将凭据带到其他主机。不内置任何真实远端地址、令牌或模型密钥。首次启动只尝试读取本机原有 `~/.config/hindsight/connection.json`，不会联网或修改它。
+Hindsight API 与 MCP 访问不发送 `Authorization`；只有模型调用按配置发送 API Key。禁用自动重定向，避免将模型凭据带到其他主机。不内置任何真实远端地址或模型密钥。首次启动只尝试读取本机原有 `~/.config/hindsight/connection.json` 的服务地址和 Bank ID，不导入令牌，不会联网或修改该文件。
+
+服务端关闭令牌校验后，任何能够访问其地址的客户端都可能读写记忆。应在部署层限制访问范围；本工具的回环监听和本地页面授权保持启用。
 
 ## 构建与验证
 
