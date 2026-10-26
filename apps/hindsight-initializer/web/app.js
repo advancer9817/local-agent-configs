@@ -1,13 +1,14 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const names = { codex: 'Codex', claude: 'Claude Code', hermes: 'Hermes', document: '文档' };
-const statusNames = { ready:'待处理', active:'活跃', skipped:'跳过', duplicate:'重复', error:'解析失败', approved:'已核验', review_required:'待复核', no_gain:'无收益' };
+const statusNames = { pending:'待提取', ready:'待处理', active:'活跃', skipped:'跳过', duplicate:'重复', error:'解析失败', approved:'已核验', review_required:'待复核', no_gain:'无收益' };
 const jobNames = {idle:'待命', running:'执行中', completed:'完成', failed:'失败', cancelled:'已取消'};
 let key = location.hash.slice(1);
 if (key) {sessionStorage.setItem('setup-key',key);history.replaceState(null,'',location.pathname);}
 else key = sessionStorage.getItem('setup-key') || '';
-let state, selected=new Set(), loaded=false, lastInventory='',lastProducts='',tab='sources', toastTimer, browseTarget, folderParent, busy=false;
+let state, selected=new Set(), uploadSelected=new Set(), consentScope='', detailProduct, sourcePage=0, discoveryMode='all', loaded=false, lastInventory='',lastProducts='',tab='sources', toastTimer, browseTarget, folderParent, busy=false;
 const fmt = (n) => Number(n || 0).toLocaleString('zh-CN');
+const fileSize = (n) => n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':fmt(n)+' B';
 const icon = (name) => {
   const i=document.createElement('i'); i.dataset.lucide=name; return i;
 };
@@ -77,6 +78,7 @@ async function save(){
   $('connection-form').elements.model_key.value='';
   $('connection-form').elements.model_key.placeholder=result.config.has_model_key?'已保存，留空保持不变':'本地模型可留空';
   renderClients();
+  renderProductSelection();
 }
 function badge(status){
   const e=document.createElement('span');e.className='badge';
@@ -88,23 +90,29 @@ function badge(status){
 function renderSources(){
   const inv=state.inventory || {sources:[]},filter=$('filter').value.toLowerCase(),rows=$('source-rows');
   rows.replaceChildren();
-  const sources=(inv.sources || []).filter(s=>(s.title+' '+s.path+' '+s.project).toLowerCase().includes(filter));
-  for(const s of sources.slice(0,1000)){
+  const available=(inv.sources || []).filter(s=>!['error','unsupported','skipped'].includes(s.status));
+  const sources=available.filter(s=>(s.title+' '+s.path+' '+s.project).toLowerCase().includes(filter));
+  sourcePage=Math.min(sourcePage,Math.max(0,Math.ceil(sources.length/100)-1));
+  $('source-pagination').hidden=sources.length<=100;
+  $('source-page-info').textContent=fmt(sourcePage*100+1)+'–'+fmt(Math.min(sources.length,(sourcePage+1)*100))+' / '+fmt(sources.length);
+  $('source-prev').disabled=sourcePage===0;$('source-next').disabled=(sourcePage+1)*100>=sources.length;
+  for(const s of sources.slice(sourcePage*100,(sourcePage+1)*100)){
     const tr=document.createElement('tr'),tds=Array.from({length:6},()=>document.createElement('td'));
     const check=document.createElement('input');check.type='checkbox';check.disabled=s.status!=='ready';check.checked=selected.has(s.id);check.setAttribute('aria-label','选择 '+s.title);
     check.onchange=()=>{if(check.checked)selected.add(s.id);else selected.delete(s.id);renderSelection();};
     tds[0].append(check);
     const title=document.createElement('b');title.textContent=s.title;
     const sub=document.createElement('small');sub.textContent=s.project;sub.title=s.path;
-    tds[1].append(title,sub);tds[2].textContent=names[s.agent] || s.agent;tds[3].textContent=fmt(s.chars);
+    tds[1].append(title,sub);tds[2].textContent=names[s.agent] || s.agent;tds[3].textContent=s.sha256?fmt(s.chars):s.size_bytes!==undefined?fileSize(s.size_bytes):fmt(s.chars);
     const st=badge(s.status);st.title=s.reason || '';tds[4].append(st);
     if(s.sha256)tds[5].append(button('file-text','预览脱敏正文',()=>preview(s.id,'source',s.title)));
     tds.forEach(e=>tr.append(e));rows.append(tr);
   }
   $('source-empty').hidden=sources.length>0;
   $('source-empty').querySelector('span').textContent=filter?'没有匹配的来源':'尚无扫描结果';
-  $('source-count').textContent=fmt((inv.sources || []).length);
-  $('metric-ready').textContent=fmt(inv.ready);$('metric-chars').textContent=fmt(inv.chars);
+  $('source-count').textContent=fmt(available.length);
+  $('metric-ready').textContent=fmt((inv.ready || 0)+(inv.pending || 0));$('metric-chars').textContent=fmt(inv.chars);
+  $('extract').hidden=!(inv.pending>0);
   renderSelection();icons();
 }
 function renderSelection(){
@@ -123,18 +131,39 @@ function renderProducts(){
   $('product-rows').replaceChildren();
   const visible=products.filter(p=>(p.title+' '+(p.reason || '')).toLowerCase().includes(filter));
   for(const p of visible){
-    const tr=document.createElement('tr'),tds=Array.from({length:4},()=>document.createElement('td'));
+    const tr=document.createElement('tr'),tds=Array.from({length:5},()=>document.createElement('td'));
+    tr.dataset.productId=p.id;
+    const check=document.createElement('input');check.type='checkbox';check.checked=uploadSelected.has(p.id);check.disabled=busy || p.status!=='approved' || !p.sha256;check.setAttribute('aria-label','选择上传 '+(p.title || '未通过核验的归档组'));
+    check.onchange=()=>{if(check.checked)uploadSelected.add(p.id);else uploadSelected.delete(p.id);renderProductSelection();};tds[0].append(check);
     const title=document.createElement('b');title.textContent=p.title || '未通过核验的归档组';
-    const sub=document.createElement('small');sub.textContent=p.reason || fmt(p.source_ids.length)+' 个来源';tds[0].append(title,sub);
-    tds[1].textContent=fmt(p.input_chars)+' → '+fmt(p.chars);tds[2].append(badge(p.status));
-    if(p.sha256)tds[3].append(button('file-text','预览精简成品',()=>preview(p.id,'product',p.title)));
+    const sub=document.createElement('small');sub.textContent=p.reason || fmt((p.source_ids || []).length)+' 个来源';tds[1].append(title,sub);
+    tds[2].textContent=fmt(p.input_chars)+' → '+fmt(p.chars);tds[3].append(badge(p.status));
+    tds[4].append(button('file-text','查看提炼明细',()=>productDetails(p.id)));
     tds.forEach(e=>tr.append(e));$('product-rows').append(tr);
   }
   const approved=products.filter(p=>p.status==='approved');
   $('product-count').textContent=fmt(products.length);$('metric-approved').textContent=fmt(approved.length);
   $('metric-output').textContent=fmt(approved.reduce((n,p)=>n+p.chars,0));$('product-empty').hidden=visible.length>0;
-  $('upload').disabled=busy || !approved.length || !$('confirm-upload').checked;
+  renderProductSelection();
   icons();
+}
+function renderProductSelection(){
+  const approved=(state.products || []).filter(p=>p.status==='approved' && p.sha256);
+  const valid=new Set(approved.map(p=>p.id));
+  uploadSelected=new Set([...uploadSelected].filter(id=>valid.has(id)));
+  const scope=JSON.stringify([state.config.api_url,state.config.bank_id,approved.filter(p=>uploadSelected.has(p.id)).map(p=>[p.id,p.sha256])]);
+  if(scope!==consentScope){consentScope=scope;$('confirm-upload').checked=false;}
+  $('product-selection-count').textContent='已选 '+fmt(uploadSelected.size)+' 篇';
+  $('select-all-products').checked=approved.length>0 && approved.every(p=>uploadSelected.has(p.id));
+  $('select-all-products').indeterminate=uploadSelected.size>0 && !$('select-all-products').checked;
+  $('select-all-products').disabled=busy || !approved.length;
+  $('confirm-upload').disabled=busy || !uploadSelected.size;
+  $('upload').disabled=busy || !uploadSelected.size || !$('confirm-upload').checked;
+  if(detailProduct){
+    const current=approved.find(p=>p.id===detailProduct.id && p.sha256===detailProduct.sha256);
+    $('detail-select').disabled=busy || !current;
+    $('detail-select').checked=!!current && uploadSelected.has(current.id);
+  }
 }
 function switchTab(which){
   tab=which;$('source-panel').hidden=which!=='sources';$('product-panel').hidden=which!=='products';
@@ -167,8 +196,14 @@ function renderJob(){
     if(!(j.log || []).length){const p=document.createElement('p');p.className='log-placeholder';p.textContent=busy?'任务启动中…':'暂无执行记录';$('logs').append(p);}
     $('logs').scrollTop=$('logs').scrollHeight;
   }
-  ['scan','rescan','test-model','test-remote','install','restore','save-sources'].forEach(id=>$(id).disabled=busy);
+  ['scan','rescan','extract','discover','start-discovery','test-model','test-remote','install','restore','save-sources'].forEach(id=>$(id).disabled=busy);
   $('connection-form').querySelector('[type=submit]').disabled=busy;
+  $('discovery-progress').hidden=j.kind!=='discover';
+  if(j.kind==='discover'){
+    const progress=state.discovery || {};
+    $('discovery-count').textContent='已发现 '+fmt(progress.files)+' 个文档 · '+(jobNames[j.status] || j.status);
+    $('discovery-path').textContent=progress.current || (progress.roots || []).join(' · ');
+  }
   renderSelection();renderProducts();
 }
 async function refresh(){
@@ -178,24 +213,32 @@ async function refresh(){
     buildConfig(state.config);$('platform').textContent=state.os==='windows'?'Windows':'Linux / Web';
     $('credential-note').textContent=state.os==='windows'?'模型密钥由 Windows DPAPI 加密保存在本机':'模型密钥保存在本机，文件权限 0600';
     loaded=true;renderClients();
+    if((state.inventory.sources || []).length || (state.products || []).length){step('archive');if((state.products || []).length)switchTab('products');}
   }
   const inv=JSON.stringify(state.inventory);
   if(inv!==lastInventory){
     lastInventory=inv;selected=new Set((state.inventory.sources || []).filter(s=>s.status==='ready').map(s=>s.id));renderSources();
   }
   const ps=JSON.stringify(state.products);
-  if(ps!==lastProducts){lastProducts=ps;renderProducts();}
+  if(ps!==lastProducts){lastProducts=ps;uploadSelected.clear();$('confirm-upload').checked=false;renderProducts();}
   renderJob();
   if(previous && previous.status==='running' && next.job.status!=='running'){
     if(next.job.status==='completed'){
       if(next.job.kind==='compact'){switchTab('products');step('archive');}
-      if(next.job.kind==='scan'){switchTab('sources');step('archive');}
-      toast('任务完成');
+      if(['scan','catalog','discover'].includes(next.job.kind)){switchTab('sources');step('archive');}
+      toast(next.job.kind==='compact'?'提炼完成，结果已保存在本地':next.job.kind==='catalog'?'文档清单已更新':'任务完成');
     } else if(next.job.status==='failed')toast(next.job.error || '任务失败');
+    if(next.job.kind==='discover'){
+      $('roots').replaceChildren();(next.config.document_roots || []).forEach(addRoot);
+      $('roots-empty').hidden=$('roots').children.length>0;
+    }
   }
 }
 async function start(path,data={}){
-  await api(path,data);await refresh();
+  const previous=state.job;
+  state.job={kind:path,status:'running',log:[]};renderJob();
+  try{await api(path,data);await refresh();}
+  catch(err){state.job=previous;renderJob();throw err;}
 }
 async function scan(){await save();step('archive');switchTab('sources');await start('scan');}
 async function preview(id,kind,title){
@@ -206,8 +249,53 @@ async function preview(id,kind,title){
     $('preview-dialog').showModal();
   });
 }
+function detailTab(which){
+  ['text','sources'].forEach(t=>{
+    $('detail-'+t+'-panel').hidden=t!==which;
+    $('detail-tab-'+t).classList.toggle('active',t===which);
+    $('detail-tab-'+t).setAttribute('aria-selected',String(t===which));
+  });
+}
+async function productDetails(id){
+  await guarded(async()=>{
+    const result=await api('preview?kind=product&id='+encodeURIComponent(id)),p=result.product;
+    detailProduct=p;
+    $('product-title').textContent=p.title || '未通过核验的归档组';
+    $('product-detail-status').replaceChildren(badge(p.status));
+    $('detail-input').textContent=fmt(p.input_chars);$('detail-output').textContent=fmt(p.chars);
+    $('detail-ratio').textContent=p.input_chars?((p.chars || 0)/p.input_chars*100).toFixed(1)+'%':'-';
+    $('product-reason').hidden=!p.reason;$('product-reason').textContent=p.reason || '';
+    $('product-text').textContent=result.text || '暂无可用的提炼正文';
+    let references=Object.entries(p.source_map || {});
+    if(!references.length)references=(state.inventory.sources || []).filter(s=>(p.source_ids || []).includes(s.id)).map((s,i)=>['S'+(i+1),s]);
+    const represented=new Set(references.map(([,s])=>s.id));
+    for(const s of state.inventory.sources || []){
+      if((p.source_ids || []).includes(s.id) && !represented.has(s.id))references.push(['副本',s]);
+    }
+    references.sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true}));
+    $('detail-source-count').textContent=fmt(references.length);
+    $('product-sources').replaceChildren();
+    for(const [label,s] of references){
+      const li=document.createElement('li'),info=document.createElement('div'),title=document.createElement('strong'),meta=document.createElement('small'),path=document.createElement('code');
+      title.textContent=label+' · '+(s.title || s.id);
+      meta.textContent=[names[s.agent] || s.agent,s.project,fmt(s.chars)+' 字',s.modified].filter(Boolean).join(' · ');
+      path.textContent=s.path || '';info.append(title,meta,path);
+      if(s.session_id){const session=document.createElement('small');session.textContent='会话 ID：'+s.session_id;info.append(session);}
+      li.append(info);
+      if((state.inventory.sources || []).some(source=>source.id===s.id && source.sha256))li.append(button('file-text','查看来源正文',()=>preview(s.id,'source',s.title)));
+      $('product-sources').append(li);
+    }
+    if(!references.length){const li=document.createElement('li');li.textContent='暂无来源明细';$('product-sources').append(li);}
+    detailTab('text');renderProductSelection();icons();$('product-dialog').showModal();
+  });
+}
 async function browse(input){
   browseTarget=input;await guarded(async()=>{await loadFolder(input.value || state.home);$('browse-dialog').showModal();});
+}
+function discoveryModeTab(mode){
+  discoveryMode=mode;
+  $('discovery-volumes').hidden=mode!=='all';$('discovery-directory-panel').hidden=mode!=='directory';
+  ['all','directory'].forEach(t=>{$('discovery-'+t).classList.toggle('active',mode===t);$('discovery-'+t).setAttribute('aria-selected',String(mode===t));});
 }
 async function loadFolder(path){
   const result=await api('browse?path='+encodeURIComponent(path));
@@ -220,26 +308,41 @@ async function loadFolder(path){
   icons();
 }
 $('connection-form').onsubmit=(e)=>{e.preventDefault();guarded(async()=>{await save();step('sources');toast('配置已保存');});};
-$('save-sources').onclick=()=>guarded(async()=>{await save();toast('提取范围已保存');});
+$('save-sources').onclick=()=>guarded(async()=>{await save();await start('catalog');});
 $('test-remote').onclick=()=>guarded(async()=>{await save();await start('test',{kind:'remote'});});
 $('test-model').onclick=()=>guarded(async()=>{await save();await start('test',{kind:'model'});});
 $('add-root').onclick=()=>{const input=addRoot();browse(input);};
-$('scan').onclick=()=>guarded(scan);$('rescan').onclick=()=>guarded(scan);
+$('discover').onclick=()=>guarded(async()=>{
+  const result=await api('document-volumes');$('volume-list').replaceChildren();
+  for(const volume of result.volumes || []){const li=document.createElement('li'),title=document.createElement('strong'),path=document.createElement('code');title.textContent=volume.name;path.textContent=volume.path;li.append(icon('hard-drive'),title,path);$('volume-list').append(li);}
+  $('discovery-root').value=state.home;discoveryModeTab('all');icons();$('discovery-dialog').showModal();
+});
+$('discovery-all').onclick=()=>discoveryModeTab('all');$('discovery-directory').onclick=()=>discoveryModeTab('directory');
+$('discovery-browse').onclick=()=>browse($('discovery-root'));
+$('start-discovery').onclick=()=>guarded(async()=>{
+  await save();
+  await start('discover',{mode:discoveryMode,path:discoveryMode==='directory'?$('discovery-root').value.trim():''});
+  $('discovery-dialog').close();switchTab('sources');step('archive');
+});
+$('scan').onclick=()=>guarded(scan);$('extract').onclick=()=>guarded(scan);$('rescan').onclick=()=>guarded(()=>start('catalog'));
 $('compact').onclick=()=>guarded(async()=>{await save();await start('compact',{ids:[...selected]});});
 $('configure-model').onclick=()=>{step('connection');const f=$('connection-form');(f.elements.model_url.value.trim()?f.elements.model:f.elements.model_url).focus();};
-$('upload').onclick=()=>guarded(()=>start('upload',{confirm:$('confirm-upload').checked}));
-$('confirm-upload').onchange=renderProducts;
+$('upload').onclick=()=>guarded(async()=>{await start('upload',{confirm:$('confirm-upload').checked,ids:[...uploadSelected]});$('confirm-upload').checked=false;renderProductSelection();});
+$('confirm-upload').onchange=renderProductSelection;
+$('select-all-products').onchange=()=>{uploadSelected=new Set($('select-all-products').checked?(state.products || []).filter(p=>p.status==='approved' && p.sha256).map(p=>p.id):[]);renderProducts();};
+$('detail-select').onchange=()=>{if(!detailProduct)return;if($('detail-select').checked)uploadSelected.add(detailProduct.id);else uploadSelected.delete(detailProduct.id);renderProducts();};
+$('detail-tab-text').onclick=()=>detailTab('text');$('detail-tab-sources').onclick=()=>detailTab('sources');
 $('install').onclick=()=>guarded(async()=>{await save();await start('install');});
 $('restore').onclick=()=>guarded(()=>start('restore'));
 $('cancel').onclick=()=>guarded(()=>api('cancel',{}));
-$('browser').onclick=()=>guarded(()=>api('open-browser',{}));
-$('exit').onclick=()=>guarded(async()=>{await api('shutdown',{});toast('本地服务已退出，可以关闭窗口');});
 $('select-all').onchange=()=>{
   const checked=$('select-all').checked;
   selected=new Set(checked?(state.inventory.sources || []).filter(s=>s.status==='ready').map(s=>s.id):[]);renderSources();
 };
 $('tab-sources').onclick=()=>switchTab('sources');$('tab-products').onclick=()=>switchTab('products');
-$('filter').oninput=()=>{renderSources();renderProducts();};
+$('filter').oninput=()=>{sourcePage=0;renderSources();renderProducts();};
+$('source-prev').onclick=()=>{sourcePage--;renderSources();$('source-rows').closest('.table-wrap').scrollTop=0;};
+$('source-next').onclick=()=>{sourcePage++;renderSources();$('source-rows').closest('.table-wrap').scrollTop=0;};
 document.querySelectorAll('.reveal').forEach(b=>b.onclick=()=>{const input=b.parentNode.querySelector('input');input.type=input.type==='password'?'text':'password';});
 document.querySelectorAll('.close-dialog').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 $('folder-up').onclick=()=>guarded(()=>loadFolder(folderParent));$('folder-go').onclick=()=>guarded(()=>loadFolder($('folder-address').value));

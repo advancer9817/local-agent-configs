@@ -42,6 +42,7 @@ type App struct {
 	job       Job
 	cancel    context.CancelFunc
 	shutdown  func()
+	discovery DiscoveryProgress
 }
 
 func newApp(root string) (*App, error) {
@@ -113,6 +114,7 @@ func (a *App) start(kind string, fn func(context.Context, Config) error) error {
 			a.job.Error = redact(err.Error())
 			if errors.Is(err, context.Canceled) {
 				a.job.Status = "cancelled"
+				a.job.Error = ""
 			}
 		}
 		a.cancel = nil
@@ -124,10 +126,11 @@ func (a *App) start(kind string, fn func(context.Context, Config) error) error {
 
 func (a *App) handler() http.Handler {
 	mux := http.NewServeMux()
+	a.registerDiscovery(mux)
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		respond(w, 200, map[string]any{"config": publicConfig(a.cfg), "job": a.job, "inventory": a.inventory, "products": a.products, "home": homePath(), "data_dir": a.root, "os": runtime.GOOS})
+		respond(w, 200, map[string]any{"config": publicConfig(a.cfg), "job": a.job, "inventory": a.inventory, "products": a.products, "discovery": a.discovery, "home": homePath(), "data_dir": a.root, "os": runtime.GOOS})
 	})
 	mux.HandleFunc("POST /api/config", func(w http.ResponseWriter, r *http.Request) {
 		var cfg Config
@@ -207,6 +210,33 @@ func (a *App) handler() http.Handler {
 				a.log("压缩模型连接与 JSON 输出测试通过")
 			}
 			return nil
+		})
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		respond(w, 202, map[string]bool{"started": true})
+	})
+	mux.HandleFunc("POST /api/catalog", func(w http.ResponseWriter, r *http.Request) {
+		err := a.start("catalog", func(ctx context.Context, c Config) error {
+			if err := c.validate(false, false); err != nil {
+				return err
+			}
+			listed, catalogErr := catalogDocuments(ctx, c, a.log, nil)
+			a.mu.Lock()
+			existing := Inventory{Sources: []Source{}}
+			for _, source := range a.inventory.Sources {
+				if source.Agent != "document" || source.SHA != "" {
+					existing.Sources = append(existing.Sources, source)
+				}
+			}
+			inventory, dir := mergeCatalog(existing, listed), a.scanDir
+			a.mu.Unlock()
+			if err := a.saveCatalog(c, inventory, dir); err != nil {
+				return err
+			}
+			a.log(fmt.Sprintf("文档清单已更新：%d 个文件，%d 篇待提取；未读取正文", len(listed.Sources), inventory.Pending))
+			return catalogErr
 		})
 		if err != nil {
 			fail(w, err)
@@ -312,17 +342,26 @@ func (a *App) handler() http.Handler {
 	})
 	mux.HandleFunc("POST /api/upload", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Confirm bool `json:"confirm"`
+			Confirm bool     `json:"confirm"`
+			IDs     []string `json:"ids"`
 		}
 		if err := decode(w, r, &req); err != nil || !req.Confirm {
 			fail(w, errors.New("必须明确确认上传已核验成品"))
+			return
+		}
+		if len(req.IDs) == 0 {
+			fail(w, errors.New("请先选择需要上传的提炼结果"))
 			return
 		}
 		err := a.start("upload", func(ctx context.Context, c Config) error {
 			a.mu.Lock()
 			ps, dir := append([]Product(nil), a.products...), a.scanDir
 			a.mu.Unlock()
-			return uploadProducts(ctx, c, ps, dir, a.root, a.log)
+			chosen, err := selectUploadProducts(ps, req.IDs)
+			if err != nil {
+				return err
+			}
+			return uploadProducts(ctx, c, chosen, dir, a.root, a.log)
 		})
 		if err != nil {
 			fail(w, err)
@@ -382,11 +421,15 @@ func (a *App) handler() http.Handler {
 		dir := a.scanDir
 		valid := false
 		folder := "raw"
+		var product *Product
 		if r.URL.Query().Get("kind") == "product" {
 			folder = "products"
 			for _, p := range a.products {
 				if p.ID == id {
 					valid = true
+					copy := p
+					product = &copy
+					break
 				}
 			}
 		} else {
@@ -401,9 +444,21 @@ func (a *App) handler() http.Handler {
 			fail(w, errors.New("预览来源无效"))
 			return
 		}
+		if product != nil && product.SHA == "" {
+			respond(w, 200, map[string]any{"text": "", "truncated": false, "product": product})
+			return
+		}
 		b, err := readBounded(filepath.Join(dir, folder, id+".md"), 100*1024*1024)
 		if err != nil {
 			fail(w, err)
+			return
+		}
+		if product != nil {
+			if hashText(string(b)) != product.SHA {
+				fail(w, errors.New("提炼结果正文指纹不匹配，拒绝显示为已核验结果"))
+				return
+			}
+			respond(w, 200, map[string]any{"text": string(b), "truncated": false, "product": product})
 			return
 		}
 		text := []rune(string(b))

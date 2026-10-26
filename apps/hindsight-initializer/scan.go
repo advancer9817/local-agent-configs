@@ -34,6 +34,7 @@ type Source struct {
 	Path      string   `json:"path"`
 	SHA       string   `json:"sha256"`
 	Chars     int      `json:"chars"`
+	Size      int64    `json:"size_bytes,omitempty"`
 	Modified  string   `json:"modified"`
 	Status    string   `json:"status"`
 	Reason    string   `json:"reason,omitempty"`
@@ -46,6 +47,7 @@ type Inventory struct {
 	Ready   int      `json:"ready"`
 	Chars   int      `json:"chars"`
 	Skipped int      `json:"skipped"`
+	Pending int      `json:"pending,omitempty"`
 }
 
 var privateName = regexp.MustCompile(`(?i)(^|[-_.])(auth|credentials?|secrets?|tokens?|passwords?|connection|runtime|config|settings|private|backup|before)([-_.]|$)`)
@@ -522,15 +524,15 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 	}
 	for _, path := range cfg.Roots {
 		log("扫描文档 " + path)
-		err := walkSafe(ctx, path, func(path string, info os.FileInfo) error {
+		err := walkDocuments(ctx, path, func(path string, info os.FileInfo) error {
+			if info.IsDir() {
+				return nil
+			}
 			if seenPath[path] {
 				return nil
 			}
 			seenPath[path] = true
-			ext := strings.ToLower(filepath.Ext(path))
-			switch ext {
-			case ".md", ".txt", ".rst", ".csv", ".html", ".htm", ".docx", ".xlsx", ".pptx", ".pdf":
-			default:
+			if !supportedDocument(path) {
 				return nil
 			}
 			s := Source{Agent: "document", Path: path, Project: filepath.Dir(path), Modified: info.ModTime().UTC().Format(time.RFC3339)}
@@ -548,7 +550,7 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 				s.Status, s.Reason = "error", err.Error()
 			}
 			return add(s)
-		})
+		}, func(path string, err error) { log("跳过不可访问路径：" + path) })
 		if err != nil {
 			if e := add(Source{Agent: "document", Path: path, Status: "error", Reason: err.Error()}); e != nil {
 				return inv, e

@@ -20,6 +20,29 @@ type UploadState struct {
 	Created  string `json:"created_at"`
 }
 
+func selectUploadProducts(products []Product, ids []string) ([]Product, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("请先选择需要上传的提炼结果")
+	}
+	available := make(map[string]Product, len(products))
+	for _, p := range products {
+		available[p.ID] = p
+	}
+	selected := []Product{}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		p, ok := available[id]
+		if !ok || p.Status != "approved" || p.SHA == "" {
+			return nil, errors.New("选择包含无效或未通过核验的提炼结果，未执行上传")
+		}
+		if !seen[id] {
+			selected = append(selected, p)
+			seen[id] = true
+		}
+	}
+	return selected, nil
+}
+
 func uploadProducts(ctx context.Context, c Config, products []Product, root, sharedRoot string, log func(string)) error {
 	if err := c.validate(true, false); err != nil {
 		return err
