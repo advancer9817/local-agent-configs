@@ -7,8 +7,9 @@ const http = require('node:http');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 
-let app, browser, mock;
+let app, browser, mock, releaseModel;
 async function cleanup() {
+  if(releaseModel)releaseModel();
   if (browser) await browser.close();
   if (app && app.pid && app.exitCode === null && app.signalCode === null) {
     const stopped = new Promise(resolve => app.once('exit', resolve));
@@ -43,7 +44,7 @@ async function cleanup() {
   await fs.writeFile(brokenDocument,'not a valid Office archive');
   await fs.utimes(brokenDocument,old,old);
   const documents = new Map();
-  let uploads = 0, modelCalls = 0;
+  let uploads = 0, modelCalls = 0, holdModel=false;
   mock = http.createServer(async(req,res)=>{
     let raw='';for await(const part of req)raw+=part;
     const body=raw?JSON.parse(raw):{};
@@ -52,6 +53,8 @@ async function cleanup() {
     const json=(x)=>res.end(JSON.stringify(x));
     if(req.url==='/v1/chat/completions'){
       modelCalls++;
+      if(holdModel)await new Promise(resolve=>{releaseModel=resolve;});
+      await new Promise(resolve=>setTimeout(resolve,600));
       const prompt=body.messages[1].content;
       let result;
       if(prompt.includes('连接测试'))result={ok:true};
@@ -118,6 +121,8 @@ async function cleanup() {
   assert.equal(await page.locator('[name=model_url]').inputValue(),mockURL+'/v1');
   await page.waitForFunction(()=>!document.querySelector('#test-model').disabled);
   await page.locator('#test-model').click();
+  await page.locator('#task-progress').waitFor({state:'visible'});
+  assert.ok((await page.locator('#progress-time').textContent()).includes('已用'));
   await page.waitForFunction(()=>document.querySelector('#logs').textContent.includes('模型连接'));
   await page.waitForFunction(()=>!document.querySelector('#test-model').disabled);
   await page.locator('[name=model_url]').fill('');
@@ -149,11 +154,21 @@ async function cleanup() {
   assert.equal(modelCalls,1,'Discovery must not call the model');
   assert.equal(uploads,0);
   await page.screenshot({path:path.join(output,'02-discovered-documents.png'),fullPage:true});
+  await page.locator('#source-rows input[aria-label="选择 项目决策"]').check();
+  assert.ok(await page.locator('#compact').isDisabled());
+  assert.ok((await page.locator('#extract').textContent()).includes('提取所选 1 篇'));
+  await page.locator('#extract').click();
+  await page.waitForFunction(()=>!document.querySelector('#scan').disabled && document.querySelector('#progress-count').textContent.includes('1 / 1'));
+  assert.equal(await page.locator('#source-rows input:checked').count(),1);
+  assert.equal(modelCalls,1,'Selected extraction must not call the model');
+  assert.equal(uploads,0,'Selected extraction must not upload');
+  await page.screenshot({path:path.join(output,'02-selected-extraction-progress.png'),fullPage:true});
   await page.locator('.step[data-step="sources"]').click();
   await page.screenshot({path:path.join(output,'02-sources-desktop.png'),fullPage:true});
   await page.locator('#scan').click();
   await page.waitForFunction(()=>document.querySelector('#metric-ready').textContent==='2');
   await page.waitForFunction(()=>!document.querySelector('#scan').disabled);
+  await page.locator('#select-all').check();
   assert.ok(await page.locator('#compact').isDisabled());
   await page.locator('#configure-model').click();
   assert.ok(await page.locator('#connection').isVisible());
@@ -175,7 +190,19 @@ async function cleanup() {
   assert.ok((await page.locator('#preview-text').textContent()).includes('数据库迁移尚未完成'));
   await page.locator('#preview-dialog .close-dialog').click();
   await page.screenshot({path:path.join(output,'03-inventory-desktop.png'),fullPage:true});
+  holdModel=true;
   await page.locator('#compact').click();
+  await page.waitForFunction(()=>document.querySelector('#progress-detail').textContent.includes('等待模型响应'));
+  assert.ok((await page.locator('#progress-count').textContent()).includes('/ 2'));
+  assert.ok((await page.locator('#progress-stage').textContent()).includes('压缩与核验'));
+  for(const width of [1380,390]){
+    await page.setViewportSize({width,height:960});
+    await page.screenshot({path:path.join(output,`03-running-progress-${width}.png`),fullPage:true});
+    const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+    assert.ok(!overflow,'Progress must fit the viewport');
+  }
+  await page.setViewportSize({width:1380,height:960});
+  holdModel=false;releaseModel();releaseModel=undefined;
   await page.waitForFunction(()=>document.querySelector('#metric-approved').textContent==='2');
   await page.waitForFunction(()=>!document.querySelector('#scan').disabled);
   assert.equal(uploads,0,'Compaction must not upload automatically');

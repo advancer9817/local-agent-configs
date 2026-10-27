@@ -400,6 +400,7 @@ func walkSafe(ctx context.Context, root string, visit func(string, os.FileInfo) 
 }
 
 func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (Inventory, error) {
+	reportProgress(ctx, "提取正文", 0, 0, "", "篇")
 	inv := Inventory{Sources: []Source{}}
 	seenPath, seenHash := map[string]bool{}, map[string]int{}
 	totalBytes := 0
@@ -446,7 +447,8 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 			inv.Skipped++
 		}
 		inv.Sources = append(inv.Sources, s)
-		return nil
+		reportProgress(ctx, "提取正文", len(inv.Sources), 0, s.Path, "篇")
+		return reportInventory(ctx, inv)
 	}
 	age := time.Duration(cfg.IdleHours) * time.Hour
 	max := int64(cfg.MaxFileMB) * 1024 * 1024
@@ -492,6 +494,7 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 					return nil
 				}
 				s := Source{Agent: agent, Path: path, Modified: info.ModTime().UTC().Format(time.RFC3339)}
+				reportDetail(ctx, "读取智能体历史会话", path)
 				if time.Since(info.ModTime()) < age {
 					s.Status, s.Reason = "active", "尚未达到闲置时长"
 					return add(s)
@@ -536,6 +539,7 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 				return nil
 			}
 			s := Source{Agent: "document", Path: path, Project: filepath.Dir(path), Modified: info.ModTime().UTC().Format(time.RFC3339)}
+			reportDetail(ctx, "读取与脱敏文档", path)
 			if time.Since(info.ModTime()) < age {
 				s.Status, s.Reason = "active", "文档仍在近期修改"
 				return add(s)
@@ -600,6 +604,7 @@ func scanHermesDB(ctx context.Context, path string, age time.Duration, max int64
 		return err
 	}
 	for _, entry := range sessions {
+		reportDetail(ctx, "读取 Hermes 会话："+entry.id, path)
 		s := Source{Agent: "hermes", Path: path, SessionID: entry.id, Title: entry.title, Project: entry.cwd}
 		if !entry.end.Valid || time.Since(time.Unix(int64(entry.end.Float64), 0)) < age {
 			s.Status, s.Reason = "active", "会话未结束或尚未达到闲置时长"

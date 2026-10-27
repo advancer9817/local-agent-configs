@@ -49,10 +49,19 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 	}
 	target := strings.TrimRight(c.API, "/") + "/" + c.Bank
 	success := 0
+	total := 0
+	for _, p := range products {
+		if p.Status == "approved" {
+			total++
+		}
+	}
+	reportProgress(ctx, "上传与回读验证", 0, total, "", "份")
 	for _, p := range products {
 		if p.Status != "approved" {
 			continue
 		}
+		reportProgress(ctx, "上传与回读验证", success, total, p.Title, "份")
+		reportDetail(ctx, "校验本地成品", p.Title)
 		body, err := os.ReadFile(filepath.Join(root, "products", p.ID+".md"))
 		if err != nil || hashText(string(body)) != p.SHA {
 			return errors.New("成品正文指纹不匹配，拒绝上传")
@@ -65,6 +74,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 		}
 		if s.Status == "completed" && s.SHA == p.SHA && s.Target == target {
 			success++
+			reportProgress(ctx, "上传与回读验证", success, total, p.Title, "份")
 			log("跳过已确认上传：" + p.Title)
 			continue
 		}
@@ -78,6 +88,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 			}
 		}
 		if s.Status == "submitting" {
+			reportDetail(ctx, "提交精简稿", p.Title)
 			log("提交精简稿：" + p.Title)
 			metadata := map[string]string{
 				"document_kind": "client-bootstrap-knowledge", "source": "hindsight-initializer",
@@ -117,6 +128,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 			}
 		}
 		if s.Status == "submitted" {
+			reportDetail(ctx, "等待远端入库完成", p.Title)
 			deadline := time.NewTimer(10 * time.Minute)
 			ticker := time.NewTicker(2 * time.Second)
 			for {
@@ -159,6 +171,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 					Metadata map[string]string `json:"metadata"`
 				} `json:"retain_params"`
 			}
+			reportDetail(ctx, "回读校验正文与记忆条数", p.Title)
 			if err = requestJSON(ctx, "GET", bankURL(c, "/documents/"+url.PathEscape(s.Document)), "", nil, &doc); err != nil {
 				return err
 			}
@@ -170,6 +183,7 @@ func uploadProducts(ctx context.Context, c Config, products []Product, root, sha
 				return err
 			}
 			success++
+			reportProgress(ctx, "上传与回读验证", success, total, p.Title, "份")
 			log("上传并回读验证完成：" + p.Title)
 		}
 	}

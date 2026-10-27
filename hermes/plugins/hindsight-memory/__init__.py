@@ -35,7 +35,7 @@ HINDSIGHT_URL = os.environ.get(
 )
 TOKEN_FILE = Path(os.environ.get("HINDSIGHT_TOKEN_FILE", str(Path.home() / ".hermes" / ".hindsight-token")))
 TIMEOUT = 8
-RECALL_BUDGET_TOKENS = 1500
+RECALL_BUDGET_TOKENS = 4096
 AGENT_ID = "hermes"
 MIN_QUERY_LEN = 4
 

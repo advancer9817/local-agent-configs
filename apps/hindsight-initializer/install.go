@@ -36,7 +36,8 @@ func childMap(m map[string]any, key string) map[string]any {
 	return x
 }
 
-func configureAgents(c Config, root string, log func(string)) error {
+func configureAgents(c Config, root string, log func(string), contexts ...context.Context) error {
+	ctx := optionalContext(contexts)
 	if err := c.validate(true, false); err != nil {
 		return err
 	}
@@ -46,6 +47,14 @@ func configureAgents(c Config, root string, log func(string)) error {
 			return errors.New("智能体目录不能为空")
 		}
 	}
+	total, completed := 0, 0
+	for _, a := range c.Agents {
+		if a.Enabled {
+			total++
+		}
+	}
+	reportProgress(ctx, "配置智能体接入", 0, total, "", "个智能体")
+	reportDetail(ctx, "安装本机接入程序", "")
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -97,6 +106,11 @@ func configureAgents(c Config, root string, log func(string)) error {
 		if !a.Enabled {
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		reportProgress(ctx, "配置智能体接入", completed, total, name, "个智能体")
+		reportDetail(ctx, "备份并写入 MCP 配置", name)
 		base := expandPath(a.Path)
 		if !filepath.IsAbs(base) {
 			return errors.New("智能体配置目录必须为绝对路径")
@@ -158,19 +172,26 @@ func configureAgents(c Config, root string, log func(string)) error {
 			return err
 		}
 		log("已配置 " + name + " MCP（原文件已备份，现有钩子未修改）")
+		completed++
+		reportProgress(ctx, "配置智能体接入", completed, total, name, "个智能体")
 	}
 	log("接入配置完成；请重启所选智能体。历史归档与实时会话钩子相互独立。")
 	return nil
 }
 
-func restoreAgents(root string, log func(string)) error {
+func restoreAgents(root string, log func(string), contexts ...context.Context) error {
+	ctx := optionalContext(contexts)
 	var entries []Backup
 	if err := readJSON(filepath.Join(root, "last-install.json"), &entries); err != nil {
 		return errors.New("没有可恢复的接入备份")
 	}
 	// Verify every file before restoring any file.
 	pending := []Backup{}
-	for _, b := range entries {
+	for i, b := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		reportProgress(ctx, "校验接入备份", i+1, len(entries), b.Path, "个文件")
 		current, err := os.ReadFile(b.Path)
 		if os.IsNotExist(err) && !b.Existed {
 			continue
@@ -187,7 +208,11 @@ func restoreAgents(root string, log func(string)) error {
 		}
 		return errors.New("接入配置在安装后发生变化，未自动覆盖，请查看备份目录")
 	}
-	for _, b := range pending {
+	for i, b := range pending {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		reportProgress(ctx, "恢复接入配置", i, len(pending), b.Path, "个文件")
 		if b.Existed {
 			data, err := os.ReadFile(b.Before)
 			if err != nil {
@@ -200,6 +225,7 @@ func restoreAgents(root string, log func(string)) error {
 			return err
 		}
 		log("已恢复：" + b.Path)
+		reportProgress(ctx, "恢复接入配置", i+1, len(pending), b.Path, "个文件")
 	}
 	return os.Remove(filepath.Join(root, "last-install.json"))
 }

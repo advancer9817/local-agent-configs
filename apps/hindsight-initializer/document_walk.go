@@ -123,6 +123,7 @@ func walkDocuments(ctx context.Context, raw string, visit func(string, os.FileIn
 					return filepath.SkipDir
 				}
 			}
+			reportDetail(ctx, "遍历目录", path)
 			info, err := entry.Info()
 			if err != nil {
 				if warning != nil {

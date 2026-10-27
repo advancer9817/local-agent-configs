@@ -24,6 +24,15 @@
     <main>
       <section id="connection" class="view">
         <div class="section-heading"><div><p class="eyebrow">CONNECTION</p><h1>连接设置</h1></div><span id="platform" class="badge">本地客户端</span></div>
+        <section id="task-progress" class="task-progress" aria-label="任务进度" aria-live="polite" hidden>
+          <i data-lucide="radar" aria-hidden="true"></i>
+          <div class="task-progress-body">
+            <div class="task-progress-heading"><strong id="progress-stage"></strong><span id="progress-count"></span></div>
+            <div id="progress-current" class="task-progress-current"></div>
+            <div class="task-progress-meta"><span id="progress-detail"></span><span id="progress-time"></span></div>
+            <progress id="progress-bar" aria-label="任务完成进度"></progress>
+          </div>
+        </section>
         <form id="connection-form">
           <h2><i data-lucide="server"></i>Hindsight 远端</h2>
           <div class="fields">
@@ -47,28 +56,29 @@
         <div class="section-heading"><div><p class="eyebrow">SOURCES</p><h1>提取范围</h1></div><button id="save-sources" class="secondary"><i data-lucide="save"></i>保存范围</button></div>
         <h2><i data-lucide="messages-square"></i>智能体历史会话</h2>
         <div id="agent-list" class="agent-list"></div>
-        <div class="heading-row"><h2><i data-lucide="folders"></i>本地文档目录</h2><div class="heading-tools"><button id="discover" class="secondary compact"><i data-lucide="radar"></i>智能扫描</button><button id="add-root" class="secondary compact"><i data-lucide="folder-plus"></i>添加目录</button></div></div>
+        <div class="heading-row"><h2><i data-lucide="folders"></i>本地文档目录</h2><div class="heading-tools"><button id="discover" class="secondary compact" title="只列出文件，选择后再提取正文"><i data-lucide="radar"></i>查找文档</button><button id="add-root" class="secondary compact"><i data-lucide="folder-plus"></i>添加目录</button></div></div>
         <div id="roots"></div>
         <div id="roots-empty" class="empty-inline"><i data-lucide="folder-open"></i>尚未选择文档目录</div>
         <div class="fields divided">
           <label>排除最近修改（小时）<input id="idle-hours" type="number" min="1" max="8760"></label>
           <label>单文件大小上限（MB）<input id="max-size" type="number" min="1" max="100"></label>
         </div>
-        <p class="muted policy"><i data-lucide="shield"></i>跳过凭据、配置、备份、依赖目录和符号链接。支持 MD、TXT、CSV、HTML、Office；PDF 需本机 pdftotext。</p>
-        <div class="footer-actions"><button id="scan" class="primary"><i data-lucide="scan-search"></i>提取本地正文<i data-lucide="arrow-right"></i></button></div>
+        <p class="muted policy"><i data-lucide="shield"></i>仅扫描 PDF、Word（DOCX）、Excel（XLSX）、PPT（PPTX）、MD、TXT。跳过凭据、配置、备份、依赖目录和符号链接。</p>
+        <p class="muted">按范围提取会直接读取正文；需要先挑选文件时，使用“查找文档”。两种操作均不上传。</p>
+        <div class="footer-actions"><button id="scan" class="primary"><i data-lucide="scan-search"></i>按所选范围提取正文<i data-lucide="arrow-right"></i></button></div>
       </section>
 
       <section id="archive" class="view" hidden>
         <div class="section-heading"><div><p class="eyebrow">LOCAL ARCHIVE</p><h1>本地归档</h1></div><button id="rescan" class="icon" title="刷新文档清单" aria-label="刷新文档清单"><i data-lucide="refresh-cw"></i></button></div>
-        <div id="discovery-progress" class="discovery-progress" hidden><i data-lucide="radar"></i><div><strong id="discovery-count"></strong><small id="discovery-path"></small></div></div>
         <div class="metrics"><div><span>待处理来源</span><strong id="metric-ready">0</strong></div><div><span>来源字符</span><strong id="metric-chars">0</strong></div><div><span>已核验成品</span><strong id="metric-approved">0</strong></div><div><span>成品字符</span><strong id="metric-output">0</strong></div></div>
         <div class="toolbar"><div class="tabs" role="tablist"><button class="active" id="tab-sources" role="tab" aria-selected="true">来源 <span id="source-count">0</span></button><button id="tab-products" role="tab" aria-selected="false">成品 <span id="product-count">0</span></button></div><input id="filter" type="search" placeholder="按标题、路径筛选" aria-label="筛选来源和成品"></div>
         <div id="source-panel">
-          <div class="selection"><label><input id="select-all" type="checkbox">全选待处理</label><span id="selection-count" class="muted">已选 0 篇</span></div>
+          <div class="selection"><label><input id="select-all" type="checkbox">全选可提取 / 可压缩</label><span id="selection-count" class="muted">已选 0 篇</span></div>
+          <p id="source-action-note" class="muted source-action-note">提取仅在本机读取正文；压缩会调用所配置的模型。上传需在成品列表单独确认。</p>
           <div class="table-wrap"><table><thead><tr><th class="check-col"></th><th>来源 / 项目</th><th>类型</th><th>字符<br>大小</th><th>状态</th><th></th></tr></thead><tbody id="source-rows"></tbody></table></div>
           <div id="source-pagination" class="pagination" hidden><span id="source-page-info"></span><div><button id="source-prev" class="icon" title="上一页" aria-label="上一页"><i data-lucide="chevron-left"></i></button><button id="source-next" class="icon" title="下一页" aria-label="下一页"><i data-lucide="chevron-right"></i></button></div></div>
           <div id="source-empty" class="empty"><i data-lucide="files"></i><span>尚无扫描结果</span></div>
-          <div class="footer-actions"><button id="extract" class="secondary" hidden><i data-lucide="file-search"></i>提取本地正文</button><button id="configure-model" class="secondary" hidden><i data-lucide="settings-2"></i>配置压缩模型</button><button id="compact" class="primary"><i data-lucide="combine"></i>压缩所选来源</button></div>
+          <div class="footer-actions"><button id="extract" class="secondary"><i data-lucide="file-search"></i>提取待处理正文</button><button id="configure-model" class="secondary" hidden><i data-lucide="settings-2"></i>配置压缩模型</button><button id="compact" class="primary"><i data-lucide="combine"></i>压缩所选来源</button></div>
         </div>
         <div id="product-panel" hidden>
           <div class="selection"><label><input id="select-all-products" type="checkbox">全选已核验结果</label><span id="product-selection-count" class="muted">已选 0 篇</span></div>
@@ -92,10 +102,11 @@
   <div id="toast" role="status" hidden></div>
   <dialog id="preview-dialog"><div class="dialog-heading"><h2 id="preview-title">正文预览</h2><button class="icon close-dialog" title="关闭预览" aria-label="关闭预览"><i data-lucide="x"></i></button></div><pre id="preview-text"></pre><p id="preview-note" class="muted"></p></dialog>
   <dialog id="discovery-dialog" aria-labelledby="discovery-title">
-    <div class="dialog-heading"><h2 id="discovery-title">智能扫描本地文档</h2><button class="icon close-dialog" title="关闭智能扫描" aria-label="关闭智能扫描"><i data-lucide="x"></i></button></div>
+    <div class="dialog-heading"><h2 id="discovery-title">查找本地文档</h2><button class="icon close-dialog" title="关闭文档查找" aria-label="关闭文档查找"><i data-lucide="x"></i></button></div>
     <div class="tabs discovery-modes" role="tablist" aria-label="扫描范围"><button id="discovery-all" class="active" role="tab" aria-selected="true">全电脑</button><button id="discovery-directory" role="tab" aria-selected="false">指定目录</button></div>
     <div id="discovery-volumes"><ul id="volume-list"></ul></div>
     <div id="discovery-directory-panel" hidden><label>目录<div class="root-item"><input id="discovery-root" aria-label="智能扫描目录"><button id="discovery-browse" class="icon" title="选择扫描目录" aria-label="选择扫描目录"><i data-lucide="folder-open"></i></button></div></label></div>
+    <p class="muted">只列出文件供选择，不读取正文。支持 PDF、DOCX、XLSX、PPTX、MD、TXT。</p>
     <div class="footer-actions"><button id="start-discovery" class="primary"><i data-lucide="radar"></i>扫描并加入</button></div>
   </dialog>
   <dialog id="product-dialog" aria-labelledby="product-title">

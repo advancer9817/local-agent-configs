@@ -23,19 +23,24 @@ func privateDocumentName(path string) bool {
 	return false
 }
 
-func supportedDocument(path string) bool {
-	if privateDocumentName(path) {
-		return false
-	}
+func commonDocumentExtension(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".md", ".txt", ".rst", ".csv", ".html", ".htm", ".docx", ".xlsx", ".pptx":
+	case ".md", ".txt", ".docx", ".xlsx", ".pptx", ".pdf":
 		return true
-	case ".pdf":
-		_, err := exec.LookPath("pdftotext")
-		return err == nil
 	default:
 		return false
 	}
+}
+
+func supportedDocument(path string) bool {
+	if privateDocumentName(path) || !commonDocumentExtension(path) {
+		return false
+	}
+	if strings.EqualFold(filepath.Ext(path), ".pdf") {
+		_, err := exec.LookPath("pdftotext")
+		return err == nil
+	}
+	return true
 }
 
 func catalogDocuments(ctx context.Context, cfg Config, log func(string), progress func(Inventory, string)) (Inventory, error) {
@@ -93,6 +98,9 @@ func catalogDocuments(ctx context.Context, cfg Config, log func(string), progres
 func mergeCatalog(existing, listed Inventory) Inventory {
 	result := Inventory{Sources: []Source{}}
 	for _, source := range existing.Sources {
+		if source.Agent == "document" && source.SHA == "" && source.Status != "error" && !commonDocumentExtension(source.Path) {
+			continue
+		}
 		if source.Status != "unsupported" {
 			result.Sources = append(result.Sources, source)
 		}

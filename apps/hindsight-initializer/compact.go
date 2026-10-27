@@ -99,6 +99,7 @@ func claimText(p Proposal, valid map[string]bool) (string, error) {
 }
 
 func verifiedCompact(ctx context.Context, c Config, evidence []Evidence, dir string) (Proposal, string, error) {
+	reportDetail(ctx, "检查已核验缓存", "")
 	valid := map[string]bool{}
 	for _, e := range evidence {
 		valid[e.ID] = true
@@ -119,6 +120,7 @@ func verifiedCompact(ctx context.Context, c Config, evidence []Evidence, dir str
 	}
 	var p Proposal
 	if err := readJSON(filepath.Join(cache, "proposal.json"), &p); err != nil {
+		reportDetail(ctx, "生成提炼稿", "")
 		prompt := `把这些来源按主题归纳合并为精炼中文文档，目标约原文5%–10%（信息密集时可更长，不为比例牺牲关键事实）。不同项目/子主题以【主题】分段。每个来源至少被一条claim引用，sources只能用输入的id。日期指快照时间，不得编造成事件时间；仍需保留原文已明确的事件时间和历史限定。返回{title:string,claims:[{text:string,sources:[id,...]}]}。材料：` + jsonText(evidence)
 		if err = modelJSON(ctx, c, prompt, &p); err != nil {
 			return p, "", err
@@ -132,6 +134,7 @@ func verifiedCompact(ctx context.Context, c Config, evidence []Evidence, dir str
 		return p, "", err
 	}
 	for attempt := 0; attempt < 2; attempt++ {
+		reportDetail(ctx, fmt.Sprintf("独立证据核验 · 第 %d 轮", attempt+1), "")
 		var check Acceptance
 		prompt := `独立核查：候选是否保留重要需求/决策/结论/未完成事项/关键标识/项目与时间边界，且没有新增无依据断言。用户授权大幅压缩，省略重复、过程、次要明细可以接受，不要把这些列入missing。尤其检查历史当现行、助手自述当已验证、不同项目状态混淆。无问题返回{safe:true,missing:[],unsupported:[],scope_issues:[]}；有问题safe:false，数组仅列严重问题，三个数组必须显式存在。来源：` + jsonText(evidence) + "\n候选：" + content
 		if err = modelJSON(ctx, c, prompt, &check); err != nil {
@@ -192,9 +195,17 @@ func compactInventory(ctx context.Context, c Config, inv Inventory, root, shared
 		return nil, err
 	}
 	cache := filepath.Join(sharedRoot, "candidates")
+	completed, total := 0, 0
+	for _, s := range inv.Sources {
+		if s.Status == "ready" {
+			total++
+		}
+	}
+	reportProgress(ctx, "压缩与核验", completed, total, "", "篇来源")
 	byProject := map[string][]Source{}
 	for _, s := range inv.Sources {
 		if s.Status == "ready" {
+			reportDetail(ctx, "校验暂存正文", s.Path)
 			b, err := os.ReadFile(filepath.Join(root, "raw", s.ID+".md"))
 			if err != nil || hashText(string(b)) != s.SHA {
 				return nil, errors.New("本地暂存正文指纹不匹配，请重新扫描")
@@ -242,6 +253,7 @@ func compactInventory(ctx context.Context, c Config, inv Inventory, root, shared
 				product.References[fmt.Sprintf("S%d", i+1)] = source
 			}
 			log(fmt.Sprintf("提炼 %d 个来源 · %d 字", len(sources), input))
+			reportProgress(ctx, "压缩与核验", completed, total, project, "篇来源")
 			var evidence []Evidence
 			var prepErr error
 			for i, s := range sources {
@@ -271,6 +283,8 @@ func compactInventory(ctx context.Context, c Config, inv Inventory, root, shared
 			if err := atomicJSON(filepath.Join(root, "products.json"), products); err != nil {
 				return err
 			}
+			completed += len(sources)
+			reportProgress(ctx, "压缩与核验", completed, total, project, "篇来源")
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -278,11 +292,14 @@ func compactInventory(ctx context.Context, c Config, inv Inventory, root, shared
 			return nil
 		}
 		for _, s := range entries {
+			reportProgress(ctx, "压缩与核验", completed, total, s.Path, "篇来源")
 			if s.Chars > 16000 {
 				log(fmt.Sprintf("分段核验长文：%s · %d 字", s.Title, s.Chars))
 				var summaries []string
 				var prepareErr error
-				for j, part := range splitText(s.Text, 16000) {
+				parts := splitText(s.Text, 16000)
+				for j, part := range parts {
+					reportDetail(ctx, fmt.Sprintf("长文分段 %d/%d · %s", j+1, len(parts), s.Title), s.Path)
 					label := fmt.Sprintf("P%d", j+1)
 					_, body, err := verifiedCompact(ctx, c, []Evidence{{label, s.Title, s.Project, s.Agent, s.Modified, part}}, cache)
 					if err != nil {
@@ -306,6 +323,8 @@ func compactInventory(ctx context.Context, c Config, inv Inventory, root, shared
 						return products, ctx.Err()
 					}
 					log("长文核验未通过，保留原文：" + s.Title)
+					completed++
+					reportProgress(ctx, "压缩与核验", completed, total, s.Path, "篇来源")
 					continue
 				}
 			}

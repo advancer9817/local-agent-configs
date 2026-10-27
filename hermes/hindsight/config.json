@@ -7,8 +7,8 @@
   "auto_retain": true,
   "retain_async": true,
   "recall_sync": true,
-  "recall_budget": "low",
-  "recall_max_tokens": 1500,
+  "recall_budget": "mid",
+  "recall_max_tokens": 4096,
   "recall_types": [
     "world",
     "experience",

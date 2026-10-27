@@ -67,7 +67,7 @@ payload = {
     "method": "tools/call",
     "params": {
         "name": "recall",
-        "arguments": {"query": query, "max_tokens": 2000, "budget": "mid"},
+        "arguments": {"query": query, "max_tokens": 4096, "budget": "mid"},
     },
 }
 print(json.dumps(payload, ensure_ascii=False))

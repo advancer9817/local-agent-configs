@@ -75,6 +75,7 @@ func (a *App) registerDiscovery(mux *http.ServeMux) {
 			search.Roots = roots
 			lastPublished := time.Time{}
 			listed, scanErr := catalogDocuments(ctx, search, a.log, func(partial Inventory, current string) {
+				reportProgress(ctx, "查找文档", len(partial.Sources), 0, current, "个文件")
 				if !lastPublished.IsZero() && time.Since(lastPublished) < 300*time.Millisecond {
 					return
 				}

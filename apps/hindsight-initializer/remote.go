@@ -76,10 +76,14 @@ func checkRemote(ctx context.Context, c Config) (map[string]any, error) {
 		return nil, err
 	}
 	var result map[string]any
+	reportProgress(ctx, "测试 Hindsight 连接", 0, 2, c.API, "步")
+	reportDetail(ctx, "等待 API 响应", c.API)
 	if err := requestJSON(ctx, "GET", bankURL(c, "/stats"), "", nil, &result); err != nil {
 		return nil, err
 	}
 	// Check the MCP handshake as well as REST availability.
+	reportProgress(ctx, "测试 Hindsight 连接", 1, 2, c.API, "步")
+	reportDetail(ctx, "等待 MCP 握手", c.API)
 	reqBody := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"hindsight-initializer","version":"1.0.0"}}}`
 	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(c.API, "/")+"/mcp/"+url.PathEscape(c.Bank)+"/", strings.NewReader(reqBody))
 	if err != nil {
@@ -111,6 +115,7 @@ func checkRemote(ctx context.Context, c Config) (map[string]any, error) {
 	if envelope["result"] == nil || envelope["error"] != nil {
 		return nil, errors.New("MCP 握手未确认成功")
 	}
+	reportProgress(ctx, "测试 Hindsight 连接", 2, 2, c.API, "步")
 	return result, nil
 }
 
@@ -130,6 +135,8 @@ func modelJSON(ctx context.Context, c Config, prompt string, out any) error {
 	if err := c.validate(false, true); err != nil {
 		return err
 	}
+	reportWaiting(ctx, "等待模型响应 · "+c.Model)
+	defer reportWaiting(ctx, "")
 	payload := map[string]any{
 		"model": c.Model, "temperature": 0, "max_tokens": 10000,
 		"messages":        []map[string]string{{"role": "system", "content": modelSystem}, {"role": "user", "content": prompt}},

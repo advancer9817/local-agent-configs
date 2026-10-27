@@ -131,7 +131,7 @@ for hh in hermes_homes:
             raise RuntimeError('Hermes configuration change failed: ' + key + ' ' + str(hh))
     changed.append(str(cp))
     if not str(hh).startswith('/mnt/c/'):
-        pcfg = {'mode':'local_external','api_url':BASE,'bank_id':BANK,'memory_mode':'hybrid','auto_recall':True,'auto_retain':True,'retain_async':True,'recall_sync':True,'recall_budget':'low','recall_max_tokens':1500,'recall_types':['world','experience','observation'],'retain_source':'hermes','retain_tags':['source_agent:hermes'],'timeout':45}
+        pcfg = {'mode':'local_external','api_url':BASE,'bank_id':BANK,'memory_mode':'hybrid','auto_recall':True,'auto_retain':True,'retain_async':True,'recall_sync':True,'recall_budget':'mid','recall_max_tokens':4096,'recall_types':['world','experience','observation'],'retain_source':'hermes','retain_tags':['source_agent:hermes'],'timeout':45}
         write_json(hh / 'hindsight/config.json', pcfg, True)
         plugin = hh / 'plugins/hindsight'
         src = HOME / '.hermes/plugins/hindsight'

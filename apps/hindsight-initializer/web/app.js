@@ -7,6 +7,7 @@ let key = location.hash.slice(1);
 if (key) {sessionStorage.setItem('setup-key',key);history.replaceState(null,'',location.pathname);}
 else key = sessionStorage.getItem('setup-key') || '';
 let state, selected=new Set(), uploadSelected=new Set(), consentScope='', detailProduct, sourcePage=0, discoveryMode='all', loaded=false, lastInventory='',lastProducts='',tab='sources', toastTimer, browseTarget, folderParent, busy=false;
+let selectionTouched=false;
 const fmt = (n) => Number(n || 0).toLocaleString('zh-CN');
 const fileSize = (n) => n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':fmt(n)+' B';
 const icon = (name) => {
@@ -29,6 +30,7 @@ async function guarded(fn){try{await fn();}catch(err){toast(err.message);}}
 function step(id){
   document.querySelectorAll('.view').forEach(e=>e.hidden=e.id!==id);
   document.querySelectorAll('.step').forEach(e=>e.classList.toggle('active',e.dataset.step===id));
+  $(id).querySelector('.section-heading').after($('task-progress'));
 }
 document.querySelectorAll('.step').forEach(e=>e.onclick=()=>step(e.dataset.step));
 function button(name,title,fn){
@@ -97,9 +99,9 @@ function renderSources(){
   $('source-page-info').textContent=fmt(sourcePage*100+1)+'–'+fmt(Math.min(sources.length,(sourcePage+1)*100))+' / '+fmt(sources.length);
   $('source-prev').disabled=sourcePage===0;$('source-next').disabled=(sourcePage+1)*100>=sources.length;
   for(const s of sources.slice(sourcePage*100,(sourcePage+1)*100)){
-    const tr=document.createElement('tr'),tds=Array.from({length:6},()=>document.createElement('td'));
-    const check=document.createElement('input');check.type='checkbox';check.disabled=s.status!=='ready';check.checked=selected.has(s.id);check.setAttribute('aria-label','选择 '+s.title);
-    check.onchange=()=>{if(check.checked)selected.add(s.id);else selected.delete(s.id);renderSelection();};
+    const tr=document.createElement('tr'),tds=Array.from({length:6},()=>document.createElement('td'));tr.dataset.sourceId=s.id;
+    const check=document.createElement('input');check.type='checkbox';check.disabled=busy || !['pending','ready'].includes(s.status);check.checked=selected.has(s.id);check.setAttribute('aria-label','选择 '+s.title);
+    check.onchange=()=>{selectionTouched=true;if(check.checked)selected.add(s.id);else selected.delete(s.id);renderSelection();};
     tds[0].append(check);
     const title=document.createElement('b');title.textContent=s.title;
     const sub=document.createElement('small');sub.textContent=s.project;sub.title=s.path;
@@ -112,17 +114,23 @@ function renderSources(){
   $('source-empty').querySelector('span').textContent=filter?'没有匹配的来源':'尚无扫描结果';
   $('source-count').textContent=fmt(available.length);
   $('metric-ready').textContent=fmt((inv.ready || 0)+(inv.pending || 0));$('metric-chars').textContent=fmt(inv.chars);
-  $('extract').hidden=!(inv.pending>0);
   renderSelection();icons();
 }
 function renderSelection(){
-  $('selection-count').textContent='已选 '+fmt(selected.size)+' 篇';
-  const ready=(state.inventory.sources || []).filter(s=>s.status==='ready');
-  $('select-all').checked=ready.length>0 && ready.every(s=>selected.has(s.id));
+  const chosen=(state.inventory.sources || []).filter(s=>selected.has(s.id));
+  const pending=chosen.filter(s=>s.status==='pending').length, readyChosen=chosen.filter(s=>s.status==='ready').length;
+  $('selection-count').textContent='已选 '+fmt(selected.size)+' 篇'+(pending?' · '+fmt(pending)+' 篇待提取':'');
+  const eligible=(state.inventory.sources || []).filter(s=>['pending','ready'].includes(s.status));
+  $('select-all').checked=eligible.length>0 && eligible.every(s=>selected.has(s.id));
   $('select-all').indeterminate=selected.size>0 && !$('select-all').checked;
+  $('select-all').disabled=busy;
+  $('extract').textContent=pending?'提取所选 '+fmt(pending)+' 篇':state.inventory.pending>0?'提取待处理正文':'正文已提取';
+  $('extract').disabled=busy || (!(state.inventory.pending>0) && !pending);
+  $('extract').hidden=false;
   const modelReady=!!state.config.model_url?.trim() && !!state.config.model?.trim();
-  $('compact').disabled=busy || selected.size===0 || !modelReady;
-  $('compact').title=modelReady?'压缩所选来源':'请先配置压缩模型接口地址和模型名称';
+  $('compact').disabled=busy || readyChosen===0 || pending>0 || !modelReady;
+  $('compact').title=pending?'所选文档还未提取正文，请先提取':modelReady?'压缩所选来源':'请先配置压缩模型接口地址和模型名称';
+  $('source-action-note').textContent=busy?jobStatus(state.job)+'，可在上方查看进度；完成或取消后可继续选择文件。':pending?'已选文档需要先提取正文，完成后即可压缩。提取不联网；压缩调用模型，上传需单独确认。':'提取仅在本机读取正文；压缩会调用所配置的模型。上传需在成品列表单独确认。';
   $('configure-model').hidden=modelReady;
   $('configure-model').disabled=busy;
 }
@@ -184,9 +192,39 @@ function renderClients(){
   icons();
 }
 let jobVersion='';
+function duration(seconds){
+  const value=Math.max(0,Math.floor(seconds || 0));
+  return value<60?value+' 秒':value<3600?Math.floor(value/60)+' 分 '+value%60+' 秒':Math.floor(value/3600)+' 小时 '+Math.floor(value%3600/60)+' 分';
+}
+function renderProgress(){
+  if(!state)return;
+  const j=state.job || {},p=j.progress || {},running=j.status==='running',known=p.total>0;
+  $('task-progress').hidden=!j.kind;
+  $('task-progress').setAttribute('aria-busy',String(running));
+  $('task-progress').dataset.status=j.status || '';
+  $('progress-stage').textContent=(j.kind==='discover'?'已发现 '+fmt(p.completed)+' 个文档':(p.stage || '任务'))+' · '+jobStatus(j);
+  const done=Math.min(p.completed || 0,p.total || Infinity);
+  $('progress-count').textContent=known?fmt(done)+' / '+fmt(p.total)+' '+(p.unit || '')+' · '+Math.floor(done/p.total*100)+'%':(p.completed?('已处理 '+fmt(p.completed)+' '+(p.unit || '')+' · '):'')+(running?'总量未确定':(jobNames[j.status] || ''));
+  const bar=$('progress-bar');
+  if(known){bar.max=p.total;bar.value=done;}else if(running){bar.removeAttribute('value');}else{bar.max=1;bar.value=j.status==='completed'?1:0;}
+  $('progress-detail').textContent=(p.detail || (running?(known?'逐项处理，完成结果会保存到本机':'统计范围或等待处理，暂无法估算剩余时间'):'本地结果已保留'))+(p.waiting?' · '+p.waiting:'');
+  const now=j.finished_at?Date.parse(j.finished_at):Date.now(),start=Date.parse(j.started_at || '');
+  const elapsed=Number.isFinite(start)?Math.max(0,(now-start)/1000):0;
+  let estimate='';
+  if(running && known && done>=3 && done<p.total){
+    const phaseStart=Date.parse(p.phase_started_at || j.started_at),phaseElapsed=(Date.now()-phaseStart)/1000;
+    if(phaseElapsed>=2)estimate=' · 预计剩余 '+duration(phaseElapsed/done*(p.total-done));
+  }
+  $('progress-time').textContent='已用 '+duration(elapsed)+(running?(estimate || ' · 剩余时间估算中'):'');
+  $('progress-current').textContent=p.current || '';$('progress-current').title=p.current || '';
+}
+function jobStatus(j){
+  const active={discover:'扫描中',catalog:'扫描中',scan:'提取中',compact:'压缩中',upload:'上传中',test:'连接测试中',install:'配置中',restore:'恢复中'};
+  return j.status==='running'?(active[j.kind] || '处理中'):(jobNames[j.status] || j.status || '待命');
+}
 function renderJob(){
   const j=state.job;busy=j.status==='running';
-  const next=badge(j.status);next.id='job-badge';$('job-badge').replaceWith(next);
+  const next=badge(j.status);next.textContent=jobStatus(j);next.id='job-badge';$('job-badge').replaceWith(next);
   $('cancel').hidden=!busy;
   $('job-error').hidden=!j.error;$('job-error').textContent=j.error || '';
   const version=JSON.stringify(j.log);
@@ -198,13 +236,12 @@ function renderJob(){
   }
   ['scan','rescan','extract','discover','start-discovery','test-model','test-remote','install','restore','save-sources'].forEach(id=>$(id).disabled=busy);
   $('connection-form').querySelector('[type=submit]').disabled=busy;
-  $('discovery-progress').hidden=j.kind!=='discover';
-  if(j.kind==='discover'){
-    const progress=state.discovery || {};
-    $('discovery-count').textContent='已发现 '+fmt(progress.files)+' 个文档 · '+(jobNames[j.status] || j.status);
-    $('discovery-path').textContent=progress.current || (progress.roots || []).join(' · ');
-  }
-  renderSelection();renderProducts();
+  const activeButtons={scan:['scan','extract'],compact:['compact'],upload:['upload'],discover:['discover'],catalog:['rescan'],install:['install'],restore:['restore'],test:['test-model','test-remote']};
+  document.querySelectorAll('button[data-running]').forEach(b=>b.removeAttribute('data-running'));
+  if(busy)for(const id of activeButtons[j.kind] || [])$(id).dataset.running='true';
+  const sourceStatus=new Map((state.inventory.sources || []).map(s=>[s.id,s.status]));
+  document.querySelectorAll('#source-rows input').forEach(input=>{input.disabled=busy || !['pending','ready'].includes(sourceStatus.get(input.closest('tr').dataset.sourceId));});
+  renderProgress();renderSelection();renderProducts();
 }
 async function refresh(){
   const previous=state && state.job;
@@ -217,7 +254,10 @@ async function refresh(){
   }
   const inv=JSON.stringify(state.inventory);
   if(inv!==lastInventory){
-    lastInventory=inv;selected=new Set((state.inventory.sources || []).filter(s=>s.status==='ready').map(s=>s.id));renderSources();
+    lastInventory=inv;
+    if(!selectionTouched)selected=new Set((state.inventory.sources || []).filter(s=>s.status==='ready').map(s=>s.id));
+    else {const valid=new Set((state.inventory.sources || []).filter(s=>['pending','ready'].includes(s.status)).map(s=>s.id));selected=new Set([...selected].filter(id=>valid.has(id)));}
+    renderSources();
   }
   const ps=JSON.stringify(state.products);
   if(ps!==lastProducts){lastProducts=ps;uploadSelected.clear();$('confirm-upload').checked=false;renderProducts();}
@@ -240,7 +280,13 @@ async function start(path,data={}){
   try{await api(path,data);await refresh();}
   catch(err){state.job=previous;renderJob();throw err;}
 }
-async function scan(){await save();step('archive');switchTab('sources');await start('scan');}
+async function scan(fromCatalog=false){
+  await save();step('archive');switchTab('sources');
+  const hasPending=(state.inventory.sources || []).some(s=>s.status==='pending' && selected.has(s.id));
+  const ids=fromCatalog && hasPending?[...selected]:[];
+  if(!ids.length)selectionTouched=false;
+  await start('scan',fromCatalog?(ids.length?{ids}:{}):{scope:true});
+}
 async function preview(id,kind,title){
   await guarded(async()=>{
     const result=await api('preview?id='+encodeURIComponent(id)+'&kind='+kind);
@@ -324,7 +370,7 @@ $('start-discovery').onclick=()=>guarded(async()=>{
   await start('discover',{mode:discoveryMode,path:discoveryMode==='directory'?$('discovery-root').value.trim():''});
   $('discovery-dialog').close();switchTab('sources');step('archive');
 });
-$('scan').onclick=()=>guarded(scan);$('extract').onclick=()=>guarded(scan);$('rescan').onclick=()=>guarded(()=>start('catalog'));
+$('scan').onclick=()=>guarded(()=>scan(false));$('extract').onclick=()=>guarded(()=>scan(true));$('rescan').onclick=()=>guarded(()=>start('catalog'));
 $('compact').onclick=()=>guarded(async()=>{await save();await start('compact',{ids:[...selected]});});
 $('configure-model').onclick=()=>{step('connection');const f=$('connection-form');(f.elements.model_url.value.trim()?f.elements.model:f.elements.model_url).focus();};
 $('upload').onclick=()=>guarded(async()=>{await start('upload',{confirm:$('confirm-upload').checked,ids:[...uploadSelected]});$('confirm-upload').checked=false;renderProductSelection();});
@@ -336,8 +382,9 @@ $('install').onclick=()=>guarded(async()=>{await save();await start('install');}
 $('restore').onclick=()=>guarded(()=>start('restore'));
 $('cancel').onclick=()=>guarded(()=>api('cancel',{}));
 $('select-all').onchange=()=>{
+  selectionTouched=true;
   const checked=$('select-all').checked;
-  selected=new Set(checked?(state.inventory.sources || []).filter(s=>s.status==='ready').map(s=>s.id):[]);renderSources();
+  selected=new Set(checked?(state.inventory.sources || []).filter(s=>['pending','ready'].includes(s.status)).map(s=>s.id):[]);renderSources();
 };
 $('tab-sources').onclick=()=>switchTab('sources');$('tab-products').onclick=()=>switchTab('products');
 $('filter').oninput=()=>{sourcePage=0;renderSources();renderProducts();};
@@ -351,3 +398,4 @@ $('folder-select').onclick=()=>{if(browseTarget)browseTarget.value=$('folder-add
 icons();
 guarded(refresh);
 setInterval(()=>refresh().catch(()=>{}),1500);
+setInterval(renderProgress,1000);

@@ -135,7 +135,7 @@ func TestCancelledCatalogKeepsDiscoveredMetadata(t *testing.T) {
 
 func TestCatalogOmitsUnsupportedFormats(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{"历史.doc", "旧表.xls", "演示.ppt", "文档.odt", "电子书.epub", "密码.doc", "账号.xls", "~$打开.doc"} {
+	for _, name := range []string{"历史.doc", "旧表.xls", "演示.ppt", "文档.odt", "电子书.epub", "密码.doc", "账号.xls", "~$打开.doc", "数据.csv", "网页.html", "网页.htm", "说明.rst", "配置.json", "配置.yaml"} {
 		oldFile(t, filepath.Join(root, name), "metadata only")
 	}
 	oldFile(t, filepath.Join(root, "可提取.md"), "metadata only")
@@ -148,6 +148,37 @@ func TestCatalogOmitsUnsupportedFormats(t *testing.T) {
 	for _, source := range inventory.Sources {
 		if source.Status != "pending" || source.SHA != "" {
 			t.Fatal("catalog extracted content unexpectedly", source)
+		}
+	}
+}
+
+func TestCatalogNarrowingPreservesExtractedHistory(t *testing.T) {
+	a, err := newApp(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources := []Source{
+		{ID: "pending-csv", Agent: "document", Path: "/docs/data.csv", Status: "pending"},
+		{ID: "active-html", Agent: "document", Path: "/docs/page.html", Status: "active"},
+		{ID: "pending-md", Agent: "document", Path: "/docs/notes.MD", Status: "pending"},
+		{ID: "ready-html", Agent: "document", Path: "/docs/history.html", Status: "ready", SHA: "extracted", Chars: 12},
+		{ID: "session", Agent: "codex", Path: "/sessions/session.jsonl", Status: "ready", SHA: "session", Chars: 8},
+	}
+	dir := filepath.Join(a.root, "scans", "existing")
+	if err := a.saveCatalog(a.cfg, Inventory{Sources: sources}, dir); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := newApp(a.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := reopened.inventory
+	if len(inv.Sources) != 3 || inv.Pending != 1 || inv.Ready != 2 || inv.Chars != 20 {
+		t.Fatal("narrowed catalog must omit pending uncommon files and preserve extracted history", inv)
+	}
+	for _, source := range inv.Sources {
+		if source.ID == "pending-csv" || source.ID == "active-html" {
+			t.Fatal("uncommon pending document survived reopening")
 		}
 	}
 }
