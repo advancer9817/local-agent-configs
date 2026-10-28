@@ -1,5 +1,6 @@
 import importlib.util
 import hashlib
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -84,9 +85,18 @@ class BoundaryTest(unittest.TestCase):
     def test_credentials_block_the_artifact_but_not_the_session(self):
         secret = self.root / "notes.md"
         secret.write_text('api_key = "abcdefghijklmnop"')
-        post, _ = self.turn("user: x\n\nassistant: y", {"artifacts": [str(secret)]})
+        with patch.dict(os.environ, {"HINDSIGHT_UPLOAD_CREDENTIAL_CHECK": "1"}):
+            post, _ = self.turn("user: x\n\nassistant: y", {"artifacts": [str(secret)]})
         self.assertEqual(post.call_args.args[2], [])
         self.assertEqual(post.call_args.args[1], "user: x\n\nassistant: y")
+
+    def test_disabled_credential_detection_sends_original_artifact(self):
+        page = self.root / "diagram.html"
+        data = b'<script>var token = document.createElementNS(namespace, "svg");</script><h1>Diagram</h1>'
+        page.write_bytes(data)
+        with patch.dict(os.environ, {"HINDSIGHT_UPLOAD_CREDENTIAL_CHECK": "0"}):
+            post, _ = self.turn("user: draw\n\nassistant: done", {"artifacts": [str(page)]})
+        self.assertEqual(post.call_args.args[2][0]["data"], data)
 
     def test_multipart_body_contains_manifest_session_and_files(self):
         body, content_type = self.hook.multipart([("manifest", '{"a": 1}')], [("file0", "a.md", b"# A")])

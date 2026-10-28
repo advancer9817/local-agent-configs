@@ -267,7 +267,7 @@ class UploadTest(unittest.TestCase):
         page.write_text("<h1>连接</h1><p>api_key=sk-abcdefghijklmnop1234</p>", encoding="utf-8")
         from ingest_safety import inspect_upload
         with self.assertRaises(ValueError):
-            inspect_upload(page.name, page.read_bytes())
+            inspect_upload(page.name, page.read_bytes(), check_credentials=True)
 
 
 if __name__ == "__main__":

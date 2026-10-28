@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 from pathlib import Path
 import re
 import zipfile
@@ -31,12 +32,17 @@ def session_identity(source_id, session_id):
     return _identity("agent-session-v6", source_id, session_id)
 
 
-def inspect_upload(filename, data):
-    """Fail closed on detected secrets or formats that cannot be safely inspected locally.
+def inspect_upload(filename, data, *, check_credentials=None):
+    """Check format bounds; credential-pattern detection is disabled by default.
 
     Office inspection covers all XML members, including hidden sheets and notes.
-    It is a credential preflight, not a document parser or a full DLP guarantee.
+    Set HINDSIGHT_UPLOAD_CREDENTIAL_CHECK=1 to re-enable credential detection.
+    It is not a document parser or a full DLP guarantee.
     """
+    if check_credentials is None:
+        check_credentials = os.environ.get("HINDSIGHT_UPLOAD_CREDENTIAL_CHECK", "0").strip().lower() in {
+            "1", "true", "on", "yes",
+        }
     suffix = Path(filename).suffix.lower()
     if suffix not in SUFFIXES or not 0 < len(data) <= MAX_SOURCE_BYTES:
         raise ValueError("Unsupported document type or size")
@@ -56,10 +62,12 @@ def inspect_upload(filename, data):
                     raise ValueError("Office package has uninspectable embedded content; export a safe text copy")
                 source = raw.decode("utf-8-sig")
                 tree = ET.fromstring(source)
-                if SECRET.search(source) or SECRET.search("".join(tree.itertext())):
+                if check_credentials and (SECRET.search(source) or SECRET.search("".join(tree.itertext()))):
                     raise ValueError("Credentials detected; export a redacted copy before upload")
     else:
         text = data.decode("utf-8-sig")
-        if "\0" in text or SECRET.search(text):
-            raise ValueError("Binary content or credentials detected; export a redacted copy before upload")
+        if "\0" in text:
+            raise ValueError("Binary content detected; export a safe text copy before upload")
+        if check_credentials and SECRET.search(text):
+            raise ValueError("Credentials detected; export a redacted copy before upload")
     return data

@@ -60,7 +60,7 @@ class IdentityTest(unittest.TestCase):
 
     def test_secret_in_html_script_is_blocked_before_upload(self):
         with self.assertRaises(ValueError):
-            inspect_upload("report.html", b'<script>const api_key="sk-abcdefghijklmnop";</script>')
+            inspect_upload("report.html", b'<script>const api_key="sk-abcdefghijklmnop";</script>', check_credentials=True)
 
 
 class SessionCleanTest(unittest.TestCase):
