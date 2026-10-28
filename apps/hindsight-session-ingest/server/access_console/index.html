@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>访问控制 · Hindsight</title>
+<link rel="icon" href="/access/static/hs-icon.png">
+<link rel="stylesheet" href="/access/static/style.css">
+<script src="/access/static/theme.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="/" aria-label="Hindsight 数据控制台" title="Hindsight 数据控制台"><img src="/access/static/hs-icon.png" alt=""><span class="wordmark"></span></a>
+  <div class="vr"></div>
+  <span class="section-title" aria-label="访问控制" title="访问控制"><i data-lucide="shield-check"></i>访问控制</span>
+  <div class="spacer"></div>
+  <div class="user-area">
+    <span class="auth-pill" id="auth-chip"></span>
+    <a class="btn" href="/" data-tip="数据控制台" aria-label="数据控制台"><i data-lucide="layout-dashboard"></i><span class="label">数据控制台</span></a>
+    <div class="vr"></div>
+    <span class="who" id="who"></span>
+    <button class="icon-btn" id="theme-btn" data-tip="切换主题" aria-label="切换主题"><i data-lucide="moon"></i></button>
+    <button class="icon-btn" id="password-btn" data-tip="修改密码" aria-label="修改密码"><i data-lucide="key-round"></i></button>
+    <button class="icon-btn" id="logout-btn" data-tip="退出登录" aria-label="退出登录"><i data-lucide="log-out"></i></button>
+  </div>
+</header>
+<div class="shell">
+  <aside class="sidebar"><nav class="tabs" id="tabs" aria-label="访问控制"></nav></aside>
+  <main id="main"></main>
+</div>
+<div id="drawer"></div>
+<div id="overlay"></div>
+<div class="toast-area" id="toasts"></div>
+<script src="/access/static/lucide.js"></script>
+<script src="/access/static/app.js"></script>
+</body>
+</html>

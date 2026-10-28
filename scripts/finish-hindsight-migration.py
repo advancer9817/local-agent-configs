@@ -35,7 +35,8 @@ def put(p,obj,secret=False):
         if secret:p.chmod(0o600)
 
 hook=HOME/'.local/lib/hindsight/hindsight-hook.py'
-put(hook,(REPO/'scripts/hindsight-hook.py').read_text())
+for name in ('hindsight-hook.py', 'session_documents.py', 'ingest_safety.py'):
+    put(hook.parent/name,(REPO/'apps/hindsight-session-ingest'/name).read_text())
 conn=json.loads((HOME/'.config/hindsight/connection.json').read_text())
 put(WIN/'.config/hindsight/connection.json',conn,True)
 settings=json.loads((HOME/'.hermes/hindsight/config.json').read_text())

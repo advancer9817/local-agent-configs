@@ -3,21 +3,18 @@ package main
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -34,7 +31,6 @@ type Source struct {
 	Path      string   `json:"path"`
 	SHA       string   `json:"sha256"`
 	Chars     int      `json:"chars"`
-	Size      int64    `json:"size_bytes,omitempty"`
 	Modified  string   `json:"modified"`
 	Status    string   `json:"status"`
 	Reason    string   `json:"reason,omitempty"`
@@ -47,7 +43,6 @@ type Inventory struct {
 	Ready   int      `json:"ready"`
 	Chars   int      `json:"chars"`
 	Skipped int      `json:"skipped"`
-	Pending int      `json:"pending,omitempty"`
 }
 
 var privateName = regexp.MustCompile(`(?i)(^|[-_.])(auth|credentials?|secrets?|tokens?|passwords?|connection|runtime|config|settings|private|backup|before)([-_.]|$)`)
@@ -55,7 +50,6 @@ var bearerRE = regexp.MustCompile(`(?i)Bearer\s+[A-Za-z0-9_./+=-]+`)
 var keyRE = regexp.MustCompile(`\b(sk-|ghp_|github_pat_|gsk_)[A-Za-z0-9_-]{12,}`)
 var assignmentRE = regexp.MustCompile(`(?im)((?:api[_-]?key|(?:auth|access|refresh|mcp)[_-]?token|password|secret)["']?\s*[=:]\s*)("[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}]+)`)
 var pemRE = regexp.MustCompile(`(?s)-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----`)
-var htmlRE = regexp.MustCompile(`(?s)<[^>]*>`)
 
 func redact(s string) string {
 	s = pemRE.ReplaceAllString(s, "[REDACTED PRIVATE KEY]")
@@ -198,146 +192,58 @@ func readBounded(path string, max int64) ([]byte, error) {
 
 func readDocument(ctx context.Context, path string, max int64) (string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
+	b, err := readBounded(path, max)
+	if err != nil {
+		return "", err
+	}
 	switch ext {
 	case ".pdf":
-		child, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		b, err := exec.CommandContext(child, "pdftotext", "-enc", "UTF-8", path, "-").Output()
-		if err != nil {
-			return "", errors.New("PDF 需安装 pdftotext；本篇未提取")
-		}
-		if int64(len(b)) > max*4 {
-			return "", errors.New("PDF 提取正文过大")
-		}
-		return string(b), nil
+		return "", errors.New("PDF 无本地安全预检，须先导出安全文本副本")
 	case ".docx", ".xlsx", ".pptx":
-		z, err := zip.OpenReader(path)
+		z, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
 		if err != nil {
 			return "", err
 		}
-		defer z.Close()
-		var out strings.Builder
-		var shared []string
-		if ext == ".xlsx" {
-			for _, f := range z.File {
-				if f.Name == "xl/sharedStrings.xml" {
-					b, e := zipBytes(f, max*4)
-					if e != nil {
-						return "", e
-					}
-					var s struct {
-						Items []struct {
-							Text string `xml:"t"`
-							Runs []struct {
-								Text string `xml:"t"`
-							} `xml:"r"`
-						} `xml:"si"`
-					}
-					if e = xml.Unmarshal(b, &s); e != nil {
-						return "", e
-					}
-					for _, item := range s.Items {
-						v := item.Text
-						for _, r := range item.Runs {
-							v += r.Text
-						}
-						shared = append(shared, v)
-					}
-				}
-			}
+		var total uint64
+		if len(z.File) > 2000 {
+			return "", errors.New("Office 包成员过多")
 		}
-		sort.Slice(z.File, func(i, j int) bool { return z.File[i].Name < z.File[j].Name })
 		for _, f := range z.File {
-			keep := f.Name == "word/document.xml" || (strings.HasPrefix(f.Name, "ppt/slides/slide") && strings.HasSuffix(f.Name, ".xml")) ||
-				(strings.HasPrefix(f.Name, "xl/worksheets/sheet") && strings.HasSuffix(f.Name, ".xml"))
-			if !keep {
+			if f.FileInfo().IsDir() {
 				continue
 			}
-			b, e := zipBytes(f, max*4)
+			total += f.UncompressedSize64
+			if total > 8000000 || !(strings.HasSuffix(f.Name, ".xml") || strings.HasSuffix(f.Name, ".rels")) {
+				return "", errors.New("Office 含嵌入二进制或超过预检上限，请导出安全文本副本")
+			}
+			member, e := zipBytes(f, 8000000)
 			if e != nil {
 				return "", e
 			}
-			if ext == ".xlsx" {
-				var sheet struct {
-					Rows []struct {
-						Cells []struct {
-							Type   string `xml:"t,attr"`
-							Value  string `xml:"v"`
-							Inline struct {
-								Text string `xml:"t"`
-							} `xml:"is"`
-						} `xml:"c"`
-					} `xml:"sheetData>row"`
+			decoder := xml.NewDecoder(strings.NewReader(string(member)))
+			var joined strings.Builder
+			for {
+				token, e := decoder.Token()
+				if e == io.EOF {
+					break
 				}
-				if e := xml.Unmarshal(b, &sheet); e != nil {
+				if e != nil {
 					return "", e
 				}
-				out.WriteString("\n" + f.Name + "\n")
-				for _, row := range sheet.Rows {
-					var values []string
-					for _, c := range row.Cells {
-						v := c.Value
-						if c.Type == "s" {
-							n, e := strconv.Atoi(v)
-							if e != nil || n < 0 || n >= len(shared) {
-								return "", errors.New("无效 Excel 字符串索引")
-							}
-							v = shared[n]
-						} else if c.Type == "inlineStr" {
-							v = c.Inline.Text
-						}
-						values = append(values, v)
-					}
-					out.WriteString(strings.Join(values, "\t") + "\n")
-				}
-			} else {
-				decoder := xml.NewDecoder(strings.NewReader(string(b)))
-				inside := false
-				for {
-					tok, e := decoder.Token()
-					if e == io.EOF {
-						break
-					}
-					if e != nil {
-						return "", e
-					}
-					switch t := tok.(type) {
-					case xml.StartElement:
-						if t.Name.Local == "t" {
-							inside = true
-						}
-					case xml.EndElement:
-						if t.Name.Local == "t" {
-							inside = false
-						}
-						if t.Name.Local == "p" {
-							out.WriteString("\n")
-						}
-					case xml.CharData:
-						if inside {
-							out.Write(t)
-						}
-					}
+				if text, ok := token.(xml.CharData); ok {
+					joined.Write(text)
 				}
 			}
-			if int64(out.Len()) > max*4 {
-				return "", errors.New("Office 解压正文超过上限")
+			if redact(string(member)) != string(member) || redact(joined.String()) != joined.String() {
+				return "", errors.New("Office 检出凭据，请先导出脱敏副本")
 			}
 		}
-		return out.String(), nil
+		return string(b), nil
 	case ".md", ".txt", ".rst", ".csv", ".html", ".htm":
-		b, err := readBounded(path, max)
-		if err != nil {
-			return "", err
-		}
 		if !utf8.Valid(b) {
 			return "", errors.New("文本不是 UTF-8；请转换编码后重试")
 		}
-		s := string(b)
-		if ext == ".html" || ext == ".htm" {
-			s = html.UnescapeString(htmlRE.ReplaceAllString(s, " "))
-		}
-		return s, nil
+		return redact(string(b)), nil
 	}
 	return "", errors.New("格式不支持")
 }
@@ -400,7 +306,6 @@ func walkSafe(ctx context.Context, root string, visit func(string, os.FileInfo) 
 }
 
 func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (Inventory, error) {
-	reportProgress(ctx, "提取正文", 0, 0, "", "篇")
 	inv := Inventory{Sources: []Source{}}
 	seenPath, seenHash := map[string]bool{}, map[string]int{}
 	totalBytes := 0
@@ -409,12 +314,16 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 			return errors.New("超过 20,000 篇扫描上限，请缩小范围")
 		}
 		if s.Status == "" {
-			s.Text = strings.TrimSpace(redact(s.Text))
+			if s.Agent != "document" {
+				s.Text = strings.TrimSpace(redact(s.Text))
+			}
 			if s.Text == "" {
 				s.Status, s.Reason = "skipped", "无正文"
 			}
 		}
-		s.Chars = utf8.RuneCountInString(s.Text)
+		if utf8.ValidString(s.Text) {
+			s.Chars = utf8.RuneCountInString(s.Text)
+		}
 		s.ID = hashText(s.Agent + "\x00" + s.Path + "\x00" + s.SessionID)
 		if s.Title == "" {
 			s.Title = strings.TrimSuffix(filepath.Base(s.Path), filepath.Ext(s.Path))
@@ -447,8 +356,7 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 			inv.Skipped++
 		}
 		inv.Sources = append(inv.Sources, s)
-		reportProgress(ctx, "提取正文", len(inv.Sources), 0, s.Path, "篇")
-		return reportInventory(ctx, inv)
+		return nil
 	}
 	age := time.Duration(cfg.IdleHours) * time.Hour
 	max := int64(cfg.MaxFileMB) * 1024 * 1024
@@ -494,7 +402,6 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 					return nil
 				}
 				s := Source{Agent: agent, Path: path, Modified: info.ModTime().UTC().Format(time.RFC3339)}
-				reportDetail(ctx, "读取智能体历史会话", path)
 				if time.Since(info.ModTime()) < age {
 					s.Status, s.Reason = "active", "尚未达到闲置时长"
 					return add(s)
@@ -527,19 +434,18 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 	}
 	for _, path := range cfg.Roots {
 		log("扫描文档 " + path)
-		err := walkDocuments(ctx, path, func(path string, info os.FileInfo) error {
-			if info.IsDir() {
-				return nil
-			}
+		err := walkSafe(ctx, path, func(path string, info os.FileInfo) error {
 			if seenPath[path] {
 				return nil
 			}
 			seenPath[path] = true
-			if !supportedDocument(path) {
+			ext := strings.ToLower(filepath.Ext(path))
+			switch ext {
+			case ".md", ".txt", ".rst", ".csv", ".html", ".htm", ".docx", ".xlsx", ".pptx", ".pdf":
+			default:
 				return nil
 			}
 			s := Source{Agent: "document", Path: path, Project: filepath.Dir(path), Modified: info.ModTime().UTC().Format(time.RFC3339)}
-			reportDetail(ctx, "读取与脱敏文档", path)
 			if time.Since(info.ModTime()) < age {
 				s.Status, s.Reason = "active", "文档仍在近期修改"
 				return add(s)
@@ -554,7 +460,7 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 				s.Status, s.Reason = "error", err.Error()
 			}
 			return add(s)
-		}, func(path string, err error) { log("跳过不可访问路径：" + path) })
+		})
 		if err != nil {
 			if e := add(Source{Agent: "document", Path: path, Status: "error", Reason: err.Error()}); e != nil {
 				return inv, e
@@ -604,7 +510,6 @@ func scanHermesDB(ctx context.Context, path string, age time.Duration, max int64
 		return err
 	}
 	for _, entry := range sessions {
-		reportDetail(ctx, "读取 Hermes 会话："+entry.id, path)
 		s := Source{Agent: "hermes", Path: path, SessionID: entry.id, Title: entry.title, Project: entry.cwd}
 		if !entry.end.Valid || time.Since(time.Unix(int64(entry.end.Float64), 0)) < age {
 			s.Status, s.Reason = "active", "会话未结束或尚未达到闲置时长"

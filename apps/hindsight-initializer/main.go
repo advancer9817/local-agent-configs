@@ -8,7 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -25,13 +24,10 @@ import (
 var assets embed.FS
 
 type Job struct {
-	Kind       string       `json:"kind"`
-	Status     string       `json:"status"`
-	Error      string       `json:"error,omitempty"`
-	Log        []string     `json:"log"`
-	StartedAt  time.Time    `json:"started_at"`
-	FinishedAt *time.Time   `json:"finished_at,omitempty"`
-	Progress   TaskProgress `json:"progress"`
+	Kind   string   `json:"kind"`
+	Status string   `json:"status"`
+	Error  string   `json:"error,omitempty"`
+	Log    []string `json:"log"`
 }
 
 type App struct {
@@ -46,7 +42,6 @@ type App struct {
 	job       Job
 	cancel    context.CancelFunc
 	shutdown  func()
-	discovery DiscoveryProgress
 }
 
 func newApp(root string) (*App, error) {
@@ -54,11 +49,7 @@ func newApp(root string) (*App, error) {
 	if err != nil {
 		return nil, errors.New("无法读取本地初始化配置")
 	}
-	token, err := loadPageToken(root)
-	if err != nil {
-		return nil, errors.New("无法读取本地页面授权")
-	}
-	a := &App{root: root, cfg: c, token: token, job: Job{Status: "idle", Log: []string{}}, inventory: Inventory{Sources: []Source{}}, products: []Product{}}
+	a := &App{root: root, cfg: c, token: randomToken(), job: Job{Status: "idle", Log: []string{}}, inventory: Inventory{Sources: []Source{}}, products: []Product{}}
 	var current struct {
 		Dir   string `json:"directory"`
 		Scope string `json:"scope_key"`
@@ -69,7 +60,6 @@ func newApp(root string) (*App, error) {
 		if e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			a.scanDir = current.Dir
 			_ = readJSON(filepath.Join(current.Dir, "inventory.json"), &a.inventory)
-			a.inventory = mergeCatalog(a.inventory, Inventory{})
 			_ = readJSON(filepath.Join(current.Dir, "products.json"), &a.products)
 		}
 	}
@@ -110,24 +100,19 @@ func (a *App) start(kind string, fn func(context.Context, Config) error) error {
 		return errors.New("已有任务执行中，请等待或取消")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	ctx = withProgress(ctx, a.updateProgress)
 	a.cancel = cancel
-	now := time.Now().UTC()
-	a.job = Job{Kind: kind, Status: "running", Log: []string{}, StartedAt: now, Progress: TaskProgress{Stage: taskLabel(kind), PhaseStart: now, UpdatedAt: now}}
+	a.job = Job{Kind: kind, Status: "running", Log: []string{}}
 	cfg := a.cfg
 	go func() {
 		err := fn(ctx, cfg)
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		a.job.Status = "completed"
-		finished := time.Now().UTC()
-		a.job.FinishedAt = &finished
 		if err != nil {
 			a.job.Status = "failed"
 			a.job.Error = redact(err.Error())
 			if errors.Is(err, context.Canceled) {
 				a.job.Status = "cancelled"
-				a.job.Error = ""
 			}
 		}
 		a.cancel = nil
@@ -139,11 +124,10 @@ func (a *App) start(kind string, fn func(context.Context, Config) error) error {
 
 func (a *App) handler() http.Handler {
 	mux := http.NewServeMux()
-	a.registerDiscovery(mux)
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		respond(w, 200, map[string]any{"config": publicConfig(a.cfg), "job": a.job, "inventory": a.inventory, "products": a.products, "discovery": a.discovery, "home": homePath(), "data_dir": a.root, "os": runtime.GOOS})
+		respond(w, 200, map[string]any{"config": publicConfig(a.cfg), "job": a.job, "inventory": a.inventory, "products": a.products, "home": homePath(), "data_dir": a.root, "os": runtime.GOOS})
 	})
 	mux.HandleFunc("POST /api/config", func(w http.ResponseWriter, r *http.Request) {
 		var cfg Config
@@ -157,9 +141,8 @@ func (a *App) handler() http.Handler {
 			fail(w, errors.New("任务运行中，不能修改配置"))
 			return
 		}
-		cfg.ModelURL = normalizeModelURL(cfg.ModelURL)
-		if cfg.ModelKey == "" && cfg.ModelURL == normalizeModelURL(a.cfg.ModelURL) {
-			cfg.ModelKey = a.cfg.ModelKey
+		if cfg.Token == "" && cfg.API == a.cfg.API {
+			cfg.Token = a.cfg.Token
 		}
 		if err := cfg.validate(false, false); err != nil {
 			fail(w, err)
@@ -167,12 +150,6 @@ func (a *App) handler() http.Handler {
 		}
 		if cfg.API != "" {
 			if err := validateEndpoint(cfg.API); err != nil {
-				fail(w, err)
-				return
-			}
-		}
-		if cfg.ModelURL != "" {
-			if err := validateEndpoint(cfg.ModelURL); err != nil {
 				fail(w, err)
 				return
 			}
@@ -203,26 +180,24 @@ func (a *App) handler() http.Handler {
 		}
 		err := a.start("test", func(ctx context.Context, c Config) error {
 			if req.Kind == "remote" {
-				reportDetail(ctx, "连接 Hindsight API 与 MCP", c.API)
 				child, cancel := context.WithTimeout(ctx, 20*time.Second)
 				defer cancel()
 				res, err := checkRemote(child, c)
 				if err != nil {
 					return err
 				}
-				a.log("Hindsight API 与 MCP 连接通过，文档数：" + fmt.Sprint(res["total_documents"]))
+				a.log("Hindsight 连接与认证通过，文档数：" + fmt.Sprint(res["total_documents"]))
 			} else {
-				reportDetail(ctx, "等待模型响应", c.Model)
 				var out struct {
-					OK bool `json:"ok"`
+					Ready bool `json:"model_configured"`
 				}
-				if err := modelJSON(ctx, c, `连接测试，不包含任何用户文件。返回{"ok":true}`, &out); err != nil {
+				if err := requestJSON(ctx, "GET", ingestURL(c, "/capabilities"), c.Token, nil, &out); err != nil {
 					return err
 				}
-				if !out.OK {
-					return errors.New("模型未返回预期测试结果")
+				if !out.Ready {
+					return errors.New("服务端未配置文档处理模型")
 				}
-				a.log("压缩模型连接与 JSON 输出测试通过")
+				a.log("服务端文档处理能力已启用，模型已配置（未执行推理测试）")
 			}
 			return nil
 		})
@@ -232,92 +207,26 @@ func (a *App) handler() http.Handler {
 		}
 		respond(w, 202, map[string]bool{"started": true})
 	})
-	mux.HandleFunc("POST /api/catalog", func(w http.ResponseWriter, r *http.Request) {
-		err := a.start("catalog", func(ctx context.Context, c Config) error {
-			if err := c.validate(false, false); err != nil {
-				return err
-			}
-			listed, catalogErr := catalogDocuments(ctx, c, a.log, func(partial Inventory, current string) {
-				reportProgress(ctx, "枚举文档清单", len(partial.Sources), 0, current, "个文件")
-			})
-			a.mu.Lock()
-			existing := Inventory{Sources: []Source{}}
-			for _, source := range a.inventory.Sources {
-				if source.Agent != "document" || source.SHA != "" {
-					existing.Sources = append(existing.Sources, source)
-				}
-			}
-			inventory, dir := mergeCatalog(existing, listed), a.scanDir
-			a.mu.Unlock()
-			if err := a.saveCatalog(c, inventory, dir); err != nil {
-				return err
-			}
-			a.log(fmt.Sprintf("文档清单已更新：%d 个文件，%d 篇待提取；未读取正文", len(listed.Sources), inventory.Pending))
-			return catalogErr
-		})
-		if err != nil {
-			fail(w, err)
-			return
-		}
-		respond(w, 202, map[string]bool{"started": true})
-	})
 	mux.HandleFunc("POST /api/scan", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			IDs   []string `json:"ids"`
-			Scope bool     `json:"scope"`
-		}
-		if err := decode(w, r, &req); err != nil && !errors.Is(err, io.EOF) {
-			fail(w, errors.New("提取参数无效"))
-			return
-		}
 		err := a.start("scan", func(ctx context.Context, c Config) error {
 			if err := c.validate(false, false); err != nil {
 				return err
 			}
-			a.mu.Lock()
-			existing, existingDir := cloneInventory(a.inventory), a.scanDir
-			a.mu.Unlock()
-			if existingDir != "" && !req.Scope && (len(req.IDs) > 0 || existing.Pending > 0) {
-				inv, err := extractCatalog(ctx, c, existing, req.IDs, existingDir, func(partial Inventory) {
-					a.mu.Lock()
-					a.inventory = partial
-					a.mu.Unlock()
-				})
-				a.mu.Lock()
-				a.inventory = inv
-				a.mu.Unlock()
-				a.log(fmt.Sprintf("正文已保存：%d 篇可压缩，%d 篇待提取", inv.Ready, inv.Pending))
+			dir := filepath.Join(a.root, "scans", time.Now().UTC().Format("20060102T150405")+"-"+randomToken()[:8])
+			inv, err := scanLocal(ctx, c, dir, a.log)
+			if err != nil {
 				return err
 			}
-			if len(req.IDs) > 0 {
-				return errors.New("所选来源已失效，请刷新清单")
-			}
-			dir := filepath.Join(a.root, "scans", time.Now().UTC().Format("20060102T150405")+"-"+randomToken()[:8])
-			lastCheckpoint := time.Time{}
-			ctx = context.WithValue(ctx, inventoryContextKey{}, func(partial Inventory) error {
-				if time.Since(lastCheckpoint) < time.Second {
-					return nil
-				}
-				if err := a.saveCatalog(c, cloneInventory(partial), dir); err != nil {
-					return err
-				}
-				lastCheckpoint = time.Now()
-				return nil
-			})
-			inv, err := scanLocal(ctx, c, dir, a.log)
-			if saveErr := atomicJSON(filepath.Join(dir, "inventory.json"), inv); saveErr != nil {
-				return saveErr
-			}
-			if saveErr := atomicJSON(filepath.Join(a.root, "current-scan.json"), map[string]string{"directory": dir, "scope_key": c.scopeKey()}); saveErr != nil {
-				return saveErr
+			if err = atomicJSON(filepath.Join(a.root, "current-scan.json"), map[string]string{"directory": dir, "scope_key": c.scopeKey()}); err != nil {
+				return err
 			}
 			a.mu.Lock()
 			a.scanDir = dir
 			a.inventory = inv
 			a.products = []Product{}
 			a.mu.Unlock()
-			a.log(fmt.Sprintf("提取结果已保存：%d 篇待处理，%d 篇跳过/重复/活跃，%d 字", inv.Ready, inv.Skipped, inv.Chars))
-			return err
+			a.log(fmt.Sprintf("扫描完成：%d 篇待处理，%d 篇跳过/重复/活跃，%d 字", inv.Ready, inv.Skipped, inv.Chars))
+			return nil
 		})
 		if err != nil {
 			fail(w, err)
@@ -327,20 +236,18 @@ func (a *App) handler() http.Handler {
 	})
 	mux.HandleFunc("POST /api/compact", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			IDs []string `json:"ids"`
+			IDs     []string `json:"ids"`
+			Confirm bool     `json:"confirm_source_upload"`
 		}
 		if err := decode(w, r, &req); err != nil {
 			fail(w, err)
 			return
 		}
-		if len(req.IDs) == 0 {
-			fail(w, errors.New("请至少选择一个待处理来源"))
+		if len(req.IDs) == 0 || !req.Confirm {
+			fail(w, errors.New("请选择来源并确认上传原件至服务端准备区"))
 			return
 		}
 		err := a.start("compact", func(ctx context.Context, c Config) error {
-			if err := c.validate(false, true); err != nil {
-				return err
-			}
 			a.mu.Lock()
 			inv, dir := a.inventory, a.scanDir
 			a.mu.Unlock()
@@ -385,7 +292,7 @@ func (a *App) handler() http.Handler {
 					review++
 				}
 			}
-			a.log(fmt.Sprintf("本地压缩完成：%d 份成品，%d 份未通过或无压缩收益", len(ps)-review, review))
+			a.log(fmt.Sprintf("服务端处理完成：%d 份成品，%d 份待复核", len(ps)-review, review))
 			return nil
 		})
 		if err != nil {
@@ -396,26 +303,17 @@ func (a *App) handler() http.Handler {
 	})
 	mux.HandleFunc("POST /api/upload", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Confirm bool     `json:"confirm"`
-			IDs     []string `json:"ids"`
+			Confirm bool `json:"confirm"`
 		}
 		if err := decode(w, r, &req); err != nil || !req.Confirm {
 			fail(w, errors.New("必须明确确认上传已核验成品"))
-			return
-		}
-		if len(req.IDs) == 0 {
-			fail(w, errors.New("请先选择需要上传的提炼结果"))
 			return
 		}
 		err := a.start("upload", func(ctx context.Context, c Config) error {
 			a.mu.Lock()
 			ps, dir := append([]Product(nil), a.products...), a.scanDir
 			a.mu.Unlock()
-			chosen, err := selectUploadProducts(ps, req.IDs)
-			if err != nil {
-				return err
-			}
-			return uploadProducts(ctx, c, chosen, dir, a.root, a.log)
+			return uploadProducts(ctx, c, ps, dir, a.root, a.log)
 		})
 		if err != nil {
 			fail(w, err)
@@ -427,9 +325,9 @@ func (a *App) handler() http.Handler {
 		mux.HandleFunc("POST /api/"+kind, func(w http.ResponseWriter, r *http.Request) {
 			err := a.start(kind, func(ctx context.Context, c Config) error {
 				if kind == "restore" {
-					return restoreAgents(a.root, a.log, ctx)
+					return restoreAgents(a.root, a.log)
 				}
-				return configureAgents(c, a.root, a.log, ctx)
+				return configureAgents(c, a.root, a.log)
 			})
 			if err != nil {
 				fail(w, err)
@@ -441,8 +339,6 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("POST /api/cancel", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		if a.cancel != nil {
-			a.job.Progress.Detail = "取消已请求，保存已完成结果"
-			a.job.Progress.UpdatedAt = time.Now().UTC()
 			a.cancel()
 		}
 		a.mu.Unlock()
@@ -477,15 +373,11 @@ func (a *App) handler() http.Handler {
 		dir := a.scanDir
 		valid := false
 		folder := "raw"
-		var product *Product
 		if r.URL.Query().Get("kind") == "product" {
 			folder = "products"
 			for _, p := range a.products {
 				if p.ID == id {
 					valid = true
-					copy := p
-					product = &copy
-					break
 				}
 			}
 		} else {
@@ -500,21 +392,9 @@ func (a *App) handler() http.Handler {
 			fail(w, errors.New("预览来源无效"))
 			return
 		}
-		if product != nil && product.SHA == "" {
-			respond(w, 200, map[string]any{"text": "", "truncated": false, "product": product})
-			return
-		}
 		b, err := readBounded(filepath.Join(dir, folder, id+".md"), 100*1024*1024)
 		if err != nil {
 			fail(w, err)
-			return
-		}
-		if product != nil {
-			if hashText(string(b)) != product.SHA {
-				fail(w, errors.New("提炼结果正文指纹不匹配，拒绝显示为已核验结果"))
-				return
-			}
-			respond(w, 200, map[string]any{"text": string(b), "truncated": false, "product": product})
 			return
 		}
 		text := []rune(string(b))

@@ -9,8 +9,8 @@ Each Agent maintains its own dedicated subfolder to keep configurations cleanly 
 新客户端首次接入可使用 [Hindsight 初始化应用](apps/hindsight-initializer/README.md)：
 
 - Windows 默认独立 EXE 窗口，也支持浏览器模式；Linux 使用本机网页。
-- 配置远端地址、Bank、认证及压缩模型；选择 Codex、Claude Code、Hermes 的历史会话和文档目录。
-- 本地扫描、脱敏、精确去重、语义压缩与独立核验，预览后明确确认上传精简成品。
+- 配置远端地址、Bank 和访问令牌；选择 Codex、Claude Code、Hermes 的历史会话和文档目录。
+- 本地扫描、凭据预检后，明确确认上传原件到服务端准备区；服务端解析、LLM 压缩与核验，预览后再次确认入库。
 - 备份并注册所选智能体的 MCP；不覆盖现有实时钩子，不删除远端原文。
 - 运行数据与凭据留在客户端，编译产物不纳入源码仓库。Windows 构建仍需真机验收。
 
@@ -22,6 +22,12 @@ bash apps/hindsight-initializer/build.sh
 ```
 
 产物输出到仓库的 `output/hindsight-initializer/`，无需更改现有恢复脚本。
+
+## Hindsight 日常会话与访问控制
+
+[apps/hindsight-session-ingest](apps/hindsight-session-ingest/README.md) 收录日常钩子和服务端代码：提示提交前召回，回合结束一次上传会话和变化产物，服务端清洗会话、解析并经 LLM 压缩产物后入库。
+访问网关统一负责控制台登录、账号与令牌、数据仓权限和 API 鉴权开关。恢复 Codex/Claude 配置时一并安装钩子依赖，不上传真实连接配置、凭据或任务数据库。
+源码推送不代表其他电脑上的客户端、初始化程序已经升级，需在各终端重新安装。
 
 ## Hermes 公司 / 家里双机交接
 

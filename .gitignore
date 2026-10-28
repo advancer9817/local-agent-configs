@@ -9,6 +9,9 @@ auth.json
 state.db*
 *.db
 *.sqlite
+*.sqlite-*
+**/admin-initial-password.txt
+**/admin-reset-*.txt
 sessions/
 logs/
 cache/
@@ -36,3 +39,5 @@ venv/
 /apps/hindsight-initializer/uploads/
 /apps/hindsight-initializer/candidates/
 /apps/hindsight-initializer/backups/
+/apps/hindsight-session-ingest/server/access/
+/apps/hindsight-session-ingest/server/session-ingest/

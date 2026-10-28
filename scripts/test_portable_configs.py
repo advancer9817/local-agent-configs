@@ -83,6 +83,16 @@ class PortableConfigsTest(unittest.TestCase):
             if agent == 'claude':
                 self.assertEqual(shlex.split(config['statusLine']['command'])[1],
                                  str(target / 'statusline.sh'))
+            if agent in ('claude', 'codex'):
+                shared = home / '.local/lib/hindsight'
+                for name in ('hindsight-hook.py', 'session_documents.py', 'ingest_safety.py'):
+                    self.assertEqual((shared / name).read_bytes(),
+                                     (REPO / 'apps/hindsight-session-ingest' / name).read_bytes())
+                probe = subprocess.run([sys.executable, str(shared / 'hindsight-hook.py'),
+                                        'retain', '--agent', agent], input='{}', text=True,
+                                       capture_output=True, env=dict(os.environ, HOME=str(home)))
+                self.assertEqual(probe.returncode, 0, probe.stderr)
+                self.assertNotIn('ModuleNotFoundError', probe.stderr)
             # Missing credentials must fail open without contacting any service.
             for script in target.glob('agent-hooks/notify_weixin_ilink.py'):
                 notification = subprocess.run([sys.executable, str(script)],

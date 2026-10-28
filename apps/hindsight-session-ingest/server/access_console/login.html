@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 · Hindsight</title>
+<link rel="icon" href="/access/static/hs-icon.png">
+<link rel="stylesheet" href="/access/static/style.css">
+<script src="/access/static/theme.js"></script>
+</head>
+<body>
+<div class="login-page">
+  <button class="icon-btn corner" id="theme-btn" data-tip="切换主题" aria-label="切换主题"><i data-lucide="moon"></i></button>
+  <form class="login-box" id="form" autocomplete="on">
+    <div class="login-logo"><img src="/access/static/hs-icon.png" alt=""><span class="wordmark" role="img" aria-label="Hindsight"></span></div>
+    <p class="sub">登录以继续</p>
+    <input class="input" id="username" name="username" autocomplete="username" placeholder="用户名" aria-label="用户名" required autofocus>
+    <input class="input" id="password" name="password" type="password" autocomplete="current-password" placeholder="密码" aria-label="密码" required>
+    <button class="btn primary" id="submit" type="submit">登录</button>
+    <div class="login-error" id="error" role="alert"></div>
+  </form>
+</div>
+<script src="/access/static/lucide.js"></script>
+<script>
+lucide.createIcons();
+bindThemeButton(document.getElementById("theme-btn"));
+const form = document.getElementById("form"), error = document.getElementById("error"), submit = document.getElementById("submit");
+function target() {
+  const next = new URLSearchParams(location.search).get("next") || "/access/";
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/access/";
+}
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  submit.disabled = true; error.textContent = "";
+  try {
+    const response = await fetch("/access/login", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username: form.username.value.trim(), password: form.password.value})});
+    if (response.ok) { location.replace(target()); return; }
+    error.textContent = (await response.json().catch(() => ({}))).detail || "登录失败";
+  } catch (e) { error.textContent = "无法连接服务器"; }
+  submit.disabled = false;
+});
+</script>
+</body>
+</html>

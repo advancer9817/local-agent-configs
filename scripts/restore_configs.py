@@ -73,13 +73,14 @@ def restore(agent, home, target):
 
     # Install only the hook implementations actually present in this repository.
     if agent in ('claude', 'codex'):
-        shared = home / '.local/lib/hindsight/hindsight-hook.py'
-        shared.parent.mkdir(parents=True, exist_ok=True)
-        if shared.exists():
-            saved = backup / 'shared/hindsight-hook.py'
-            saved.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(shared, saved)
-        shutil.copy2(REPO / 'scripts/hindsight-hook.py', shared)
+        for name in ('hindsight-hook.py', 'session_documents.py', 'ingest_safety.py'):
+            shared = home / '.local/lib/hindsight' / name
+            shared.parent.mkdir(parents=True, exist_ok=True)
+            if shared.exists():
+                saved = backup / 'shared' / name
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(shared, saved)
+            shutil.copy2(REPO / 'apps/hindsight-session-ingest' / name, shared)
     else:
         hooks = target / 'agent-hooks'
         hooks.mkdir(parents=True, exist_ok=True)
