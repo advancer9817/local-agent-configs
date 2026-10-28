@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from hindsight_api.extensions.http import HttpExtension
 from hindsight_api.models import RequestContext
 
-from artifact_refine import ChatModel
+from artifact_refine import ChatModel, SESSION_REFINE_VERSION
 from ingest_jobs import IngestProcessor, JobStore
 from ingest_safety import MAX_SOURCE_BYTES, PIPELINE_VERSION, SUFFIXES, artifact_identity, session_identity
 
@@ -51,8 +51,11 @@ class HindsightAdapter:
         metadata.update(ingest_job_id=job["job_id"], source_file_sha256=hashlib.sha256(job["original"]).hexdigest())
         if kind == "session":
             agent = metadata.get("source_agent", "unknown")
+            context = ("Edited agent conversation. Preserve user requirements, assistant-reported results "
+                       "and pending verification as source-qualified historical statements, not current instructions."
+                       if metadata.get("refine_status") == "llm_session" else "Agent conversation")
             return {"content": job["refined_text"], "document_id": job["document_id"], "metadata": metadata,
-                    "context": "Agent conversation", "update_mode": "replace",
+                    "context": context, "update_mode": "replace",
                     "tags": ["source_agent:" + agent]}
         title = next((line[2:].strip() for line in job["refined_text"].splitlines() if line.startswith("# ")),
                      job["filename"])
@@ -169,7 +172,9 @@ class SessionIngestExtension(HttpExtension):
                 if session is not None:
                     text = (await session.read()).decode("utf-8")
                     if text.strip():
-                        documents.append(("session",) + session_document(manifest, text))
+                        document_id, filename, data, metadata = session_document(manifest, text)
+                        metadata["session_refine_version"] = str(SESSION_REFINE_VERSION)
+                        documents.append(("session", document_id, filename, data, metadata))
                 entries = manifest.get("artifacts") or []
                 if not isinstance(entries, list) or len(entries) > MAX_ARTIFACTS:
                     raise ValueError("Too many artifacts")

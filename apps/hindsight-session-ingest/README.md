@@ -20,11 +20,13 @@
 ```text
 一轮结束 → 钩子 POST /ext/ingest/banks/{bank}/sessions（manifest + session + file0..2）
         → 网关校验令牌和读写权限 → 扩展写入任务表，立即返回 {accepted, failed}
-        → 后台：会话  清洗（去掉注入的召回背景、环境块、凭据）→ 原生 retain
+        → 后台：会话  清洗 → LLM 整理完整会话 → 原生 retain（失败保留原文）
                 产物  解析去噪 → LLM 压缩 → 原生 retain
 ```
 
-- 同一会话始终是同一份文档；每轮上传整篇，Hindsight 的 replace 按分块哈希只处理变化的分块。会话不经过 LLM。
+- 同一会话始终是同一份文档：客户端仍上传完整原文，服务端只增加一次整篇 LLM 整理，沿用文档 ID 和原生 replace，不分流到专用档案库，不等待静默期，不按证据类别过滤条目。原生 retain 继续提取记忆。
+- 会话整理保留背景目标、关键要求与约束、最终方案与修订、实现结果、排障经验、未完成事项和产物入口；助手报告保留内容及来源限定，不因缺少工具日志而整项丢弃。合并重复和删除噪声，不要求固定条数或压缩比例。
+- 任务记录的 `original` 保留客户端原始上传字节，`parsed_text` 保留清洗正文，`refined_text` 缓存整理结果，现有任务预览可对照原文和整理稿；`refine_info.refine_status=llm_session` 表示模型整理成功。模型不可用、异常、空输出、扩写、凭据或新增数字/路径校验失败时，`raw_fallback` 表示完整清洗正文照常入库，不阻塞会话。字面量检查不等同于语义完整性证明。
 - 产物和初始化归档必须经过 LLM；模型不可用、超限或输出不合格时不降级入库。
 - 任务表以 (bank, document) 为主键：新版本覆盖未处理的旧版本，相同内容版本不重复处理，前一次 retain 未结束时新版本等待它结束。
 - 状态：pending → processing → submitting → retaining → completed；异常进入 retrying，3 次后 failed；无有效正文为 skipped。failed 的文档再次上传或调用 retry 会重新排队。

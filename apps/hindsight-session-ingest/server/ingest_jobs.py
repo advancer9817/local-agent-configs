@@ -17,7 +17,7 @@ import sqlite3
 import time
 import uuid
 
-from artifact_refine import condense, parse_original, refine_archive
+from artifact_refine import condense, condense_session, parse_original, refine_archive
 from ingest_safety import PIPELINE_VERSION
 from session_documents import redact
 
@@ -183,11 +183,16 @@ class IngestProcessor:
         self.store, self.adapter, self.model = store, adapter, model
 
     async def prepare(self, job):
-        """Return (refined, info). Sessions skip the model; documents must pass it."""
+        """Return (refined, info). Sessions keep the original when light editing fails."""
         kind = job["kind"]
         if kind == "session":
             text = clean_session(job["original"].decode("utf-8"))
-            return text, {"artifact_parser": "session-text", "refine_status": "not_applicable"}
+            self.store.update(job["job_id"], parsed_text=text)
+            job["parsed_text"] = text
+            request = json.loads(job["request"])
+            title = str(request.get("original_title") or request.get("title") or "")
+            self.store.update(job["job_id"], stage="refine")
+            return await asyncio.to_thread(condense_session, text, self.model, title)
         evidence = None
         if job["parsed_text"] is not None:
             parsed = job["parsed_text"]

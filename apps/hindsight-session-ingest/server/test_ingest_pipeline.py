@@ -20,7 +20,7 @@ class Model:
         self.reply = reply
         self.calls = 0
 
-    def complete(self, prompt):
+    def complete(self, prompt, **kwargs):
         self.calls += 1
         if isinstance(self.reply, Exception):
             raise self.reply
@@ -107,14 +107,63 @@ class JobsTest(unittest.IsolatedAsyncioTestCase):
             if not await self.processor.step():
                 return
 
-    async def test_session_skips_model_and_completes_after_native_retain(self):
+    async def test_short_session_falls_back_and_completes_after_native_retain(self):
         self.session("user: hi\n\nassistant: hello")
         await self.processor.step()
-        self.assertEqual(self.model.calls, 0)
+        self.assertEqual(self.model.calls, 1)
+        self.assertEqual(self.current()["refined_text"], "user: hi\n\nassistant: hello")
         self.assertEqual(self.current()["status"], "retaining")
         self.adapter.status.return_value = {"status": "completed"}
         await self.processor.step()
         self.assertEqual(self.current()["status"], "completed")
+
+    async def test_failed_session_edit_keeps_the_full_conversation(self):
+        text = ("user: Build the workflow.\n\nassistant: Checking the implementation.\n\n"
+                "assistant: Delivered. Platform verification is pending.\n\n"
+                "user: Keep the existing interfaces.\n\nassistant: The interfaces are unchanged.")
+        self.session(text)
+        self.processor.model = Model(RuntimeError("Session model unavailable"))
+        await self.processor.step()
+        job = self.adapter.submit.await_args.args[0]
+        self.assertEqual(job["refined_text"], text)
+        self.assertEqual(job["parsed_text"], text)
+        self.assertEqual(self.processor.model.calls, 1)
+        self.assertEqual(self.current()["status"], "retaining")
+
+    async def test_session_edit_uses_the_same_document_and_preserves_original_bytes(self):
+        text = ("user: Build the workflow and keep interfaces.\n\n"
+                "assistant: Report and questions are separate. Platform verification is pending.")
+        note = "# Workflow\n\nReport and questions are separate. Platform verification is pending."
+        self.session(text)
+        self.processor.model = Model(note)
+        self.adapter.submit.side_effect = ConnectionError()
+        await self.processor.step()
+        self.assertEqual(self.current()["status"], "retrying")
+        self.adapter.submit.side_effect = None
+        self.store.update(self.current()["job_id"], next_at=0)
+        await self.processor.step()
+        job = self.adapter.submit.await_args.args[0]
+        self.assertEqual(job["document_id"], "sess")
+        self.assertEqual(job["refined_text"], note)
+        self.assertEqual(job["original"], text.encode())
+        self.assertEqual(job["parsed_text"], text)
+        self.assertEqual(self.processor.model.calls, 1)
+        self.assertEqual(self.current()["status"], "retaining")
+
+    async def test_session_uploaded_during_edit_supersedes_the_old_note(self):
+        self.session("user: First request.\n\nassistant: First delivery.")
+
+        def newer_upload(prompt, **kwargs):
+            self.session("user: First request.\n\nassistant: First delivery.\n\nuser: New request.")
+            return "# First\n\nFirst delivery."
+
+        self.processor.model.complete = newer_upload
+        await self.processor.step()
+        self.adapter.submit.assert_not_awaited()
+        latest = self.current()
+        self.assertEqual(latest["status"], "pending")
+        self.assertIsNone(latest["refined_text"])
+        self.assertIn(b"New request.", latest["original"])
 
     async def test_newer_version_overwrites_unprocessed_older_one(self):
         self.session("user: v1")

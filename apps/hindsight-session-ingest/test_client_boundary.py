@@ -1,5 +1,6 @@
 import importlib.util
 import hashlib
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -52,6 +53,24 @@ class BoundaryTest(unittest.TestCase):
         longer = first + "\n\nuser: next\n\nassistant: more"
         post, _ = self.turn(longer)
         self.assertEqual(post.call_args.args[1], longer)
+
+    def test_raw_transcript_keeps_user_requests_and_all_assistant_messages(self):
+        path = self.root / "transcript.jsonl"
+        messages = [
+            {"role": "user", "content": [{"type": "input_text", "text": "Build the workflow."}]},
+            {"role": "assistant", "phase": "commentary",
+             "content": [{"type": "output_text", "text": "Checking the implementation."}]},
+            {"role": "assistant", "phase": "final_answer",
+             "content": [{"type": "output_text", "text": "Delivered. Platform verification is pending."}]},
+        ]
+        path.write_text("\n".join(json.dumps({"payload": dict(type="message", **message)})
+                                  for message in messages))
+        text = self.hook.transcript({"transcript_path": str(path)})
+        self.assertEqual(text, "user: Build the workflow.\n\n"
+                              "assistant: Checking the implementation.\n\n"
+                              "assistant: Delivered. Platform verification is pending.")
+        post, _ = self.turn(text)
+        self.assertEqual(post.call_args.args[1], text)
 
     def test_failed_upload_records_nothing_so_next_turn_retries(self):
         post, failure = self.turn("user: hi\n\nassistant: hello", error=OSError("offline"))

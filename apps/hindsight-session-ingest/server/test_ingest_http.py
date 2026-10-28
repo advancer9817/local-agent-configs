@@ -69,6 +69,16 @@ class HttpTest(unittest.TestCase):
         jobs = self.client.get(self.url + "/jobs", headers=self.headers).json()["jobs"]
         self.assertEqual(len(jobs), 1)
 
+    def test_session_edit_version_keeps_the_original_upload_and_document_identity(self):
+        text = "user: Build the workflow.\n\nassistant: Delivered; platform verification pending."
+        response = self.upload(text)
+        self.assertEqual(response.status_code, 200)
+        with self.ext.store.connect() as db:
+            row = db.execute("SELECT * FROM documents WHERE kind='session'").fetchone()
+        self.assertEqual(row["document_id"], session_identity("machine", "sid"))
+        self.assertEqual(row["original"], text.encode())
+        self.assertEqual(json.loads(row["request"])["session_refine_version"], "1")
+
     def test_failed_documents_are_reported_and_retryable(self):
         job = self.upload().json()["accepted"][0]
         self.ext.store.update(job["job_id"], status="failed", error="RuntimeError")
