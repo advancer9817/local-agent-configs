@@ -122,6 +122,14 @@ class PluginTest(unittest.TestCase):
     def setUp(self):
         self.plugin = load("hindsight_memory", HERE / "hermes-plugin/hindsight-memory/__init__.py")
 
+    def test_config_snapshot_carries_the_same_plugin(self):
+        snapshot = HERE.parents[1] / "hermes/plugins/hindsight-memory"
+        if not snapshot.is_dir():
+            self.skipTest("config snapshot not present")
+        for name in ("__init__.py", "plugin.yaml"):
+            self.assertEqual((snapshot / name).read_bytes(),
+                             (HERE / "hermes-plugin/hindsight-memory" / name).read_bytes(), name)
+
     def test_recall_returns_context_and_retain_runs_once_per_session(self):
         calls = []
 

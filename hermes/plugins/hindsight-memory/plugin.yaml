@@ -1,7 +1,8 @@
 name: hindsight-memory
 version: 1.0.0
-description: "每次 LLM 调用前查询 Hindsight 记忆(recall)注入上下文；调用结束后异步 retain 问答对；会话结束兜底整段 transcript 写回。"
+description: "Hindsight recall before each turn; uploads the whole session from state.db after each turn."
 author: "advancer"
 hooks:
   - pre_llm_call
   - post_llm_call
+  - on_session_end
