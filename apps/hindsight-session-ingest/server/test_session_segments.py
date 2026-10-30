@@ -138,6 +138,22 @@ class SegmentTest(unittest.TestCase):
         self.assertEqual(len(self.model.calls), 1)
         self.assertNotIn("## 主线与当前状态", note)
 
+    def test_overview_can_be_longer_than_its_source_notes(self):
+        complete = self.model.complete
+        overview = ("The user requests a change and the assistant proposes it. "
+                    "Implementation remains pending and the proposal is not a completed delivery. ") * 3
+
+        def expanded_overview(prompt, **kwargs):
+            if kwargs.get("system") in (OVERVIEW_SYSTEM, OVERVIEW_CHECK_SYSTEM):
+                return overview
+            return complete(prompt, **kwargs)
+
+        self.model.complete = expanded_overview
+        note, info = self.refine(self.first + "\n\n" + self.second)
+        self.assertGreater(len(overview), len(self.first + self.second))
+        self.assertIn(overview.strip(), note)
+        self.assertTrue(info["overview_checked_against_source"])
+
     def test_document_format_changes_revision_without_recompressing_notes(self):
         text = self.first + "\n\n" + self.second
         self.refine(text)

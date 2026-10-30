@@ -262,9 +262,9 @@ def condense_session(text, model, title="", *, context="", required=(), evidence
         if required:
             prompt += "\n保留这些原文标识符及其含义和来源限定：\n" + json.dumps(list(required), ensure_ascii=False)
         output = _session_note_output(model.complete(prompt, system=SESSION_SYSTEM), text)
-        failure = "empty_or_oversized"
-        if not output or useful_chars(output) > useful_chars(text):
-            raise ValueError("Empty or oversized session note")
+        failure = "empty_output"
+        if not output:
+            raise ValueError("Empty session note")
         missing = unsupported_literals(output, source, allow_cli_endpoints=True)
         omitted = [value for value in required if value not in output]
         if missing or omitted:
@@ -278,9 +278,9 @@ def condense_session(text, model, title="", *, context="", required=(), evidence
             failure = "model_call"
             output = _session_note_output(model.complete(repair, system=SESSION_SYSTEM), text)
             info["refine_corrected"] = True
-        failure = "empty_or_oversized"
-        if not output or useful_chars(output) > useful_chars(text):
-            raise ValueError("Empty or oversized session note")
+        failure = "empty_output"
+        if not output:
+            raise ValueError("Empty session note")
         if unsupported_literals(output, source, allow_cli_endpoints=True):
             failure = "unsupported_literals"
             raise ValueError("Session note introduced unsupported literals")

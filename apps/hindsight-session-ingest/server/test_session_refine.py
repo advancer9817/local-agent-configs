@@ -57,13 +57,35 @@ class SessionRefineTest(unittest.TestCase):
         self.assertEqual(result, NOTE)
 
     def test_failures_cannot_be_published_as_raw_text(self):
-        for response in ("", "long" * len(SOURCE), RuntimeError("private provider detail"),
+        for response in ("", RuntimeError("private provider detail"),
                          "# Report\nAssistant reports 999 tests passed.",
                          "# Report\nUse /different/path/file.zip"):
             with self.subTest(response_type=type(response).__name__):
                 with self.assertRaises(RuntimeError) as error:
                     condense_session(SOURCE, Model(response))
                 self.assertNotIn("private", str(error.exception))
+
+    def test_short_source_may_expand_into_a_structured_note(self):
+        source = "user: Keep existing interfaces."
+        note = "# Requirement\n\nThe user requires preserving the existing interfaces.\n\n## Scope\n\nKeep the existing interfaces."
+        result, info = condense_session(source, Model(note))
+        self.assertGreater(len(result), len(source))
+        self.assertEqual(result, note)
+        self.assertEqual(info["refine_status"], "llm_session")
+
+    def test_anchor_correction_may_also_expand_a_short_source(self):
+        class Correcting(Model):
+            def complete(self, prompt, **kwargs):
+                self.prompts.append((prompt, kwargs))
+                if len(self.prompts) == 1:
+                    return "Assistant reports tests passed."
+                return "# Verification\n\nAssistant reports 79 tests passed. This is an assistant-reported result."
+
+        source = "assistant: 79 tests passed."
+        result, info = condense_session(source, Correcting(None), required=["79"])
+        self.assertGreater(len(result), len(source))
+        self.assertIn("79 tests passed", result)
+        self.assertTrue(info["refine_corrected"])
 
     def test_missing_model_blocks_publication(self):
         with self.assertRaises(RuntimeError):
