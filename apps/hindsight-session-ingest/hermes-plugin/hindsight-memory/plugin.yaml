@@ -1,0 +1,8 @@
+name: hindsight-memory
+version: 1.0.0
+description: "Hindsight recall before each turn; uploads the whole session from state.db after each turn."
+author: "advancer"
+hooks:
+  - pre_llm_call
+  - post_llm_call
+  - on_session_end

@@ -172,9 +172,19 @@ def fallback_title(text):
     return "会话记录与处理结论"
 
 
-def local_title(sid, text, payload=None):
+def agent_title(value):
+    """Titles reported by Claude/Hermes may be in any language; only make them safe as names."""
+    value = re.sub(r"\s+", " ", str(value or "").replace("/", "／").replace("\\", "＼")).strip()
+    value = "".join(c for c in value if ord(c) >= 32)[:200].strip()
+    return original_title(value) if value else ""
+
+
+def local_title(sid, text, payload=None, agent="codex"):
     payload = payload or {}
     value = payload.get("session_title") or payload.get("conversation_title")
+    if agent != "codex":
+        # Claude/Hermes have no Codex thread database; their own title or the first request names the session.
+        return agent_title(value) or agent_title(fallback_title(text))
     if value and re.search(r"[\u3400-\u9fff]", str(value)):
         return original_title(value)
     for database in (Path.home() / ".codex").glob("state_*.sqlite"):
@@ -191,6 +201,85 @@ def local_title(sid, text, payload=None):
         except sqlite3.Error:
             continue
     raise ValueError("Original session title unavailable; provide session_title")
+
+
+def claude_title(path):
+    """Latest /rename title, else Claude's generated title, from a Claude Code transcript."""
+    custom = generated = ""
+    path = normalize_path(path, os.getcwd())
+    if path is None:
+        return ""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if '"custom-title"' not in line and '"ai-title"' not in line and '"summary"' not in line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                kind = row.get("type")
+                if kind == "custom-title" and row.get("customTitle"):
+                    custom = str(row["customTitle"])
+                elif kind == "ai-title" and row.get("aiTitle"):
+                    generated = str(row["aiTitle"])
+                elif kind == "summary" and row.get("summary") and not generated:
+                    generated = str(row["summary"])
+    except OSError:
+        return ""
+    return custom or generated
+
+
+def block_text(content):
+    """Text of a message stored either as a string or as JSON content blocks."""
+    if isinstance(content, str) and content.lstrip().startswith("[{"):
+        try:
+            content = json.loads(content)
+        except ValueError:
+            return content.strip()
+    if isinstance(content, list):
+        return "\n".join(str(x.get("text", "")) for x in content
+                         if isinstance(x, dict) and x.get("type") in ("text", "input_text", "output_text")).strip()
+    return str(content or "").strip()
+
+
+def hermes_session(database, sid):
+    """Read one Hermes session from state.db (read-only).
+
+    In-place compaction archives earlier turns as compacted=1 and inserts a summary row; the
+    archived originals are kept and the generated summary is dropped. Rewound or superseded rows
+    (active=0, compacted=0) and Hermes system notes (model switches, auto-continue) are skipped.
+    """
+    connection = sqlite3.connect(f"file:{Path(database).as_posix()}?mode=ro", uri=True, timeout=5)
+    connection.row_factory = sqlite3.Row
+    try:
+        session = connection.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
+        if session is None:
+            raise LookupError("Hermes session not found")
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(messages)")}
+        where = ["session_id=?", "role IN ('user','assistant')"]
+        if "active" in columns:
+            where.append("(COALESCE(active,1)=1 OR COALESCE(compacted,0)=1)" if "compacted" in columns
+                         else "COALESCE(active,1)=1")
+        if "_compressed_summary" in columns:
+            where.append("COALESCE(_compressed_summary,0)=0")
+        if "display_kind" in columns:
+            where.append("(display_kind IS NULL OR display_kind='steer')")
+        rows = connection.execute("SELECT role,content FROM messages WHERE " + " AND ".join(where)
+                                  + " ORDER BY timestamp,id", (sid,)).fetchall()
+    finally:
+        connection.close()
+    text = "\n\n".join(f"{row['role']}: {body}" for row in rows for body in [block_text(row["content"])] if body)
+    keys = session.keys()
+    field = lambda name: (session[name] or "") if name in keys else ""
+    result = {"text": text, "title": field("title")}
+    if field("cwd"):
+        result["cwd"] = field("cwd")
+    if field("git_repo_root"):
+        result["workspace_roots"] = [field("git_repo_root")]
+    if session["started_at"]:
+        result["session_started_at"] = datetime.fromtimestamp(float(session["started_at"]), timezone.utc).isoformat()
+    return result
 
 
 def normalize_path(value, cwd=None):

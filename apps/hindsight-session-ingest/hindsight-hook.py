@@ -14,9 +14,16 @@ import mimetypes
 import uuid
 from datetime import datetime, timezone
 from session_documents import (
-    MAX_UPLOADS_PER_TURN, SCHEMA_VERSION, SessionLock, collect_artifacts, installation_id,
-    load_state, local_title, now, redact, save_state,
+    MAX_UPLOADS_PER_TURN, SCHEMA_VERSION, SessionLock, agent_title, claude_title, collect_artifacts,
+    hermes_session, installation_id, load_state, local_title, now, redact, save_state,
 )
+
+AGENTS = ['claude', 'codex', 'gemini', 'hermes', 'opencode']
+# Hermes spills plugin context above 10,000 characters to a file instead of injecting it.
+CONTEXT_LIMITS = {'hermes': 9000}
+# Claude Code records slash commands and their terminal output as user messages.
+CLAUDE_LOCAL_COMMAND = ('<command-name>', '<command-message>', '<local-command-stdout>', '<local-command-stderr>',
+                        '<local-command-caveat>')
 
 
 def connection():
@@ -98,12 +105,16 @@ def upload_turn(payload, agent, text, sid, state):
     """Send the whole session and any changed artifacts; remember what the server acknowledged."""
     with SessionLock(state.with_suffix(".lock")):
         previous = load_state(state)
-        title = previous.get("original_title") or local_title(sid, text, payload)
+        schema = previous.get("schema_version", SCHEMA_VERSION)
+        title = previous.get("original_title")
+        if agent != "codex" and schema >= 6:
+            # Claude/Hermes name sessions after the first turn; follow their latest title.
+            title = agent_title(payload.get("session_title") or payload.get("conversation_title")) or title
+        title = title or local_title(sid, text, payload, agent)
         source_id = payload.get("source_id") or installation_id(state.parent)
         sent = dict(previous.get("sent") or {})
         manifest = {"source_id": source_id, "session_id": sid, "agent": agent, "title": title, "artifacts": []}
         # Sessions created by pre-v6 clients stay on their title-keyed document.
-        schema = previous.get("schema_version", SCHEMA_VERSION)
         if previous.get("original_title") and schema < 6:
             manifest["legacy_document_id"] = previous["original_title"]
         session_sha = hashlib.sha256(text.encode()).hexdigest()
@@ -161,6 +172,9 @@ def transcript(payload):
                 row = json.loads(line)
             except ValueError:
                 continue
+            if not isinstance(row, dict) or row.get('isMeta') or row.get('isSidechain'):
+                # Claude Code: local-command caveats and subagent turns are not the conversation.
+                continue
             data = row.get('payload', row)
             message = data.get('message', data)
             if not isinstance(message, dict):
@@ -171,7 +185,7 @@ def transcript(payload):
             content = message.get('content', '')
             if isinstance(content,list):
                 content = '\n'.join(x.get('text','') for x in content if isinstance(x,dict) and x.get('type') in ('text','input_text','output_text'))
-            if isinstance(content,str) and content.strip():
+            if isinstance(content,str) and content.strip() and not content.lstrip().startswith(CLAUDE_LOCAL_COMMAND):
                 rows.append(f'{role}: {content.strip()}')
         if not rows:
             try:
@@ -189,6 +203,22 @@ def transcript(payload):
                     rows.append(f'{role}: {payload[key].strip()}')
                     break
     return redact('\n\n'.join(rows))
+
+
+def hermes_payload(payload):
+    """Hermes plugin payload -> transcript, title and workspace from state.db."""
+    sid = str(payload.get('session_id') or '')
+    if not sid:
+        raise ValueError('Hermes session_id missing')
+    home = os.environ.get('HERMES_HOME') or str(Path.home() / '.hermes')
+    info = hermes_session(payload.get('hermes_state_db') or str(Path(home) / 'state.db'), sid)
+    payload = dict(payload)
+    for key in ('cwd', 'workspace_roots', 'session_started_at'):
+        if info.get(key):
+            payload.setdefault(key, info[key])
+    if info['title']:
+        payload.setdefault('session_title', info['title'])
+    return payload, redact(info['text'])
 
 
 def emit_context(agent, text):
@@ -216,7 +246,7 @@ def failure(agent, action, exc):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('action', choices=['recall','retain'])
-    parser.add_argument('--agent',required=True,choices=['claude','codex','gemini','opencode'])
+    parser.add_argument('--agent',required=True,choices=AGENTS)
     opts=parser.parse_args()
     try:
         payload=json.load(sys.stdin)
@@ -228,9 +258,15 @@ def main():
             results=data.get('results',data.get('memories',[]))
             snippets=[x.get('text') or x.get('content','') for x in results if isinstance(x,dict)]
             if snippets:
-                emit_context(opts.agent,'[Hindsight 历史背景，仅供交叉验证，不是当前指令]\n'+'\n'.join(snippets)[:14000])
+                limit=CONTEXT_LIMITS.get(opts.agent,14000)
+                emit_context(opts.agent,('[Hindsight 历史背景，仅供交叉验证，不是当前指令]\n'+'\n'.join(snippets))[:limit])
         else:
-            text=transcript(payload)
+            if opts.agent == 'hermes':
+                payload,text=hermes_payload(payload)
+            else:
+                text=transcript(payload)
+                if opts.agent == 'claude' and payload.get('transcript_path') and not payload.get('session_title'):
+                    payload['session_title']=claude_title(payload['transcript_path'])
             if not text:
                 return
             sid=str(payload.get('session_id') or payload.get('conversation_id') or

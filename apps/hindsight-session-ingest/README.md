@@ -9,6 +9,7 @@
 | 位置 | 做什么 | 不做什么 |
 | --- | --- | --- |
 | 客户端钩子 `hindsight-hook.py` | 会话前召回；每轮结束把整篇会话和有变化的产物（最多 3 份）一次 POST 上去 | 不解析、不调用模型、不轮询任务、不保存游标 |
+| Hermes 插件 `hermes-plugin/hindsight-memory` | `pre_llm_call` 调用钩子召回并注入上下文；`post_llm_call` 后台调用钩子上传该会话 | 不另写上传逻辑 |
 | `ingest_safety.py` / `session_documents.py` | 产物范围、大小、凭据预检；会话文本与产物收集 | 不转换文档 |
 | 访问网关 `server/access_gateway.py` | 令牌鉴权、数据仓授权、控制台登录、账号与令牌管理 | 不碰文档内容 |
 | 入库扩展 `server/ingest_extension.py` | 接收上传、生成文档 ID、任务查询/重试/确认 | 不做账号授权（由网关负责） |
@@ -99,7 +100,25 @@ cd ../hindsight-initializer && go test ./...
 
 ## Windows / WSL / Linux 客户端更新
 
-将 install.py、hindsight-hook.py、session_documents.py 和 ingest_safety.py 放到客户端，用 Python 3 执行 install.py。安装器保留连接配置和其他钩子，并备份旧文件。云端无法读取 Windows/WSL 的本地文件，必须在对应机器安装新版上传脚本。
+把整个 `apps/hindsight-session-ingest` 目录（含 `hermes-plugin/`）放到客户端，用 Python 3 执行：
+
+```bash
+python3 install.py                        # 自动安装本机已有的 Codex / Claude Code / Hermes
+python3 install.py --agents claude,hermes # 只装指定客户端
+python3 install.py --api-url http://127.0.0.1:18888 --bank mcore-active-snapshot --token-file TOKEN_FILE  # 新电脑
+```
+
+| 客户端 | 每轮召回 | 每轮上传 | 安装位置 |
+| --- | --- | --- | --- |
+| Codex | `UserPromptSubmit` | `Stop`，读 rollout JSONL | `~/.codex/hooks.json`；变更后在 Codex 中确认信任 |
+| Claude Code | `UserPromptSubmit` | `Stop`，读 `transcript_path`；跳过 `isMeta`、子代理、斜杠命令回显和工具结果 | `~/.claude/settings.json`（`CLAUDE_CONFIG_DIR`） |
+| Hermes | 插件 `pre_llm_call`（≤9,000 字符，低于 Hermes 1 万字符转存阈值） | 插件 `post_llm_call` 后台读 `state.db`；`on_session_end` 补中断轮 | `$HERMES_HOME/plugins/hindsight-memory`，并 `hermes plugins enable` |
+
+- 三者共用 `~/.local/lib/hindsight/hindsight-hook.py` 与 `~/.config/hindsight/connection.json`；`connection.json` 不存在时可由参数创建（0600，令牌不回显，也可用 `HINDSIGHT_TOKEN`）。
+- Hermes 原文：`active=1` 加上原地压缩归档的 `compacted=1` 原始轮次，去掉压缩摘要、回退轮次和系统提示（模型切换、自动续跑），保留插话（steer）。`hermes serve` 不注册 shell hooks，因此用插件。
+- 标题：Codex 读线程库；Claude 用 `/rename` 标题或自动标题，Hermes 用会话标题，并随改名更新；都没有时取首个用户请求。
+- 安装器只替换命令中含 `hindsight-hook.py` 的条目，保留 MCORE 等其他钩子；修改前备份（Hermes 插件备份在 `~/.local/lib/hindsight/backups/`，避免被当成插件加载）。新会话生效，正在运行的客户端建议重启。
+- 云端无法读取 Windows/WSL 的本地文件，必须在对应机器分别安装。可视化初始化工具负责存量归档和 MCP，不安装实时钩子。
 
 ## 成本
 
