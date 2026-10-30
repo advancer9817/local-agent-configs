@@ -12,7 +12,7 @@ sys.path[:0] = [str(HERE), str(HERE.parent)]
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from artifact_refine import model_object, refine_archive
+from artifact_refine import SESSION_REFINE_VERSION, model_object, refine_archive
 from ingest_extension import SessionIngestExtension, HindsightAdapter
 from ingest_safety import artifact_identity, session_identity
 
@@ -77,7 +77,7 @@ class HttpTest(unittest.TestCase):
             row = db.execute("SELECT * FROM documents WHERE kind='session'").fetchone()
         self.assertEqual(row["document_id"], session_identity("machine", "sid"))
         self.assertEqual(row["original"], text.encode())
-        self.assertEqual(json.loads(row["request"])["session_refine_version"], "1")
+        self.assertEqual(json.loads(row["request"])["session_refine_version"], str(SESSION_REFINE_VERSION))
 
     def test_failed_documents_are_reported_and_retryable(self):
         job = self.upload().json()["accepted"][0]
@@ -88,6 +88,17 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(retried.json()["status"], "pending")
         self.assertEqual(self.client.post(self.url + "/jobs/" + job["job_id"] + "/retry",
                                           headers=self.headers).status_code, 409)
+
+    def test_degraded_session_is_visible_and_retryable_with_safe_preview(self):
+        job = self.upload("user: token=abcdefghijk\n\nassistant: hello").json()["accepted"][0]
+        self.ext.store.update(job["job_id"], status="degraded", error="SessionRefineError")
+        failed = self.upload(text=None).json()["failed"]
+        self.assertEqual(failed[0]["status"], "degraded")
+        preview = self.client.get(self.url + "/jobs/" + job["job_id"] + "?preview=true",
+                                  headers=self.headers).json()
+        self.assertNotIn("abcdefghijk", preview["original_text"])
+        response = self.client.post(self.url + "/jobs/" + job["job_id"] + "/retry", headers=self.headers)
+        self.assertEqual(response.json()["status"], "pending")
 
     def test_rejects_missing_identity_and_unsupported_files(self):
         self.assertEqual(self.upload(manifest={"session_id": "sid", "title": "t"}).status_code, 400)

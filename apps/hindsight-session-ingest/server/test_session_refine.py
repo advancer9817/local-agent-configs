@@ -6,7 +6,7 @@ import unittest
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE), str(HERE.parent)]
 
-from artifact_refine import condense_session, SESSION_SYSTEM
+from artifact_refine import condense_session, SESSION_SYSTEM, unsupported_literals
 
 
 class Model:
@@ -48,7 +48,7 @@ class SessionRefineTest(unittest.TestCase):
         self.assertIn("Assistant reports 79 tests", result)
         self.assertIn("verification pending", result)
 
-    def test_long_input_is_not_cut_into_independent_checklists(self):
+    def test_edit_primitive_never_truncates_its_supplied_source(self):
         source = SOURCE * 400
         model = Model(NOTE)
         result, _ = condense_session(source, model)
@@ -56,20 +56,18 @@ class SessionRefineTest(unittest.TestCase):
         self.assertIn(source, model.prompts[0][0])
         self.assertEqual(result, NOTE)
 
-    def test_failures_preserve_the_original_and_do_not_expose_model_errors(self):
+    def test_failures_cannot_be_published_as_raw_text(self):
         for response in ("", "long" * len(SOURCE), RuntimeError("private provider detail"),
                          "# Report\nAssistant reports 999 tests passed.",
                          "# Report\nUse /different/path/file.zip"):
             with self.subTest(response_type=type(response).__name__):
-                result, info = condense_session(SOURCE, Model(response))
-                self.assertEqual(result, SOURCE)
-                self.assertEqual(info["refine_status"], "raw_fallback")
-                self.assertNotIn("private", str(info))
+                with self.assertRaises(RuntimeError) as error:
+                    condense_session(SOURCE, Model(response))
+                self.assertNotIn("private", str(error.exception))
 
-    def test_missing_model_preserves_the_original(self):
-        result, info = condense_session(SOURCE, None)
-        self.assertEqual(result, SOURCE)
-        self.assertEqual(info["refine_fallback"], "model_not_configured")
+    def test_missing_model_blocks_publication(self):
+        with self.assertRaises(RuntimeError):
+            condense_session(SOURCE, None)
 
     def test_section_numbers_are_not_treated_as_new_decimal_facts(self):
         result, info = condense_session(SOURCE, Model("## 6.2 Verification\n\nLive verification pending."))
@@ -88,8 +86,8 @@ class SessionRefineTest(unittest.TestCase):
         self.assertIn("999", model.prompts[1][0])
         self.assertTrue(info["refine_corrected"])
         broken = Model("# Workflow\n\nAssistant reports 999 tests.")
-        result, info = condense_session(SOURCE, broken)
-        self.assertEqual(result, SOURCE)
+        with self.assertRaises(RuntimeError):
+            condense_session(SOURCE, broken)
         self.assertEqual(len(broken.prompts), 2)
 
     def test_converted_path_is_restored_only_when_the_source_contains_the_same_file(self):
@@ -99,22 +97,27 @@ class SessionRefineTest(unittest.TestCase):
         self.assertIn("/mnt/c/Users/test/output/workflow.zip", result)
         self.assertNotIn("C:\\", result)
         self.assertEqual(info["refine_status"], "llm_session")
-        result, info = condense_session(source, Model(note.replace("workflow.zip", "invented.zip")))
-        self.assertEqual(result, source)
-        self.assertEqual(info["refine_status"], "raw_fallback")
+        with self.assertRaises(RuntimeError):
+            condense_session(source, Model(note.replace("workflow.zip", "invented.zip")))
 
     def test_fences_are_removed_and_credentials_cannot_enter_the_note(self):
         result, info = condense_session(SOURCE, Model("```markdown\n" + NOTE + "\n```"))
         self.assertEqual(result, NOTE)
         self.assertEqual(info["refine_status"], "llm_session")
-        result, info = condense_session(SOURCE, Model("password=abcdefghijklmnop"))
-        self.assertEqual(result, SOURCE)
-        self.assertEqual(info["refine_status"], "raw_fallback")
+        with self.assertRaises(RuntimeError):
+            condense_session(SOURCE, Model("password=abcdefghijklmnop"))
 
     def test_empty_source_never_calls_the_model(self):
         model = Model(NOTE)
         self.assertEqual(condense_session("", model)[0], "")
         self.assertEqual(model.prompts, [])
+
+    def test_explicit_cli_host_port_pair_is_not_a_fabricated_endpoint(self):
+        source = "Run worker --http-host 127.0.0.1 --http-port 18889."
+        self.assertEqual(unsupported_literals("127.0.0.1:18889", source, allow_cli_endpoints=True), [])
+        self.assertEqual(unsupported_literals("127.0.0.1:18889", source), ["127.0.0.1:18889"])
+        self.assertEqual(unsupported_literals("127.0.0.1:18890", source, allow_cli_endpoints=True),
+                         ["127.0.0.1:18890"])
 
 
 if __name__ == "__main__":

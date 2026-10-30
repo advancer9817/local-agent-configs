@@ -19,6 +19,7 @@ from hindsight_api.models import RequestContext
 
 from artifact_refine import ChatModel, SESSION_REFINE_VERSION
 from ingest_jobs import IngestProcessor, JobStore
+from session_refine import CLEAN_VERSION, recipe_fingerprint
 from ingest_safety import MAX_SOURCE_BYTES, PIPELINE_VERSION, SUFFIXES, artifact_identity, session_identity
 
 MAX_REQUEST_BYTES = 60_000_000
@@ -174,6 +175,8 @@ class SessionIngestExtension(HttpExtension):
                     if text.strip():
                         document_id, filename, data, metadata = session_document(manifest, text)
                         metadata["session_refine_version"] = str(SESSION_REFINE_VERSION)
+                        metadata["session_clean_version"] = str(CLEAN_VERSION)
+                        metadata["session_recipe"] = recipe_fingerprint()
                         documents.append(("session", document_id, filename, data, metadata))
                 entries = manifest.get("artifacts") or []
                 if not isinstance(entries, list) or len(entries) > MAX_ARTIFACTS:
@@ -199,6 +202,8 @@ class SessionIngestExtension(HttpExtension):
             # Failures stay visible to the client on later turns until fixed or retried.
             failed = [self.store.public(job) for job in
                       self.store.list(bank_id, owner, status="failed", session_id=session_id)]
+            failed.extend(self.store.public(job) for job in
+                          self.store.list(bank_id, owner, status="degraded", session_id=session_id))
             return {"accepted": accepted, "failed": failed}
 
         @router.post("/ingest/banks/{bank_id}/archives")

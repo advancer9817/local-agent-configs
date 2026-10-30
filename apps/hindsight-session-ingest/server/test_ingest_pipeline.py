@@ -107,28 +107,36 @@ class JobsTest(unittest.IsolatedAsyncioTestCase):
             if not await self.processor.step():
                 return
 
-    async def test_short_session_falls_back_and_completes_after_native_retain(self):
+    async def test_short_session_completes_only_after_checked_note_and_native_retain(self):
         self.session("user: hi\n\nassistant: hello")
+        self.processor.model = Model("hello")
         await self.processor.step()
-        self.assertEqual(self.model.calls, 1)
-        self.assertEqual(self.current()["refined_text"], "user: hi\n\nassistant: hello")
+        self.assertEqual(self.processor.model.calls, 1)
+        self.assertEqual(self.current()["refined_text"], "hello")
         self.assertEqual(self.current()["status"], "retaining")
         self.adapter.status.return_value = {"status": "completed"}
         await self.processor.step()
         self.assertEqual(self.current()["status"], "completed")
 
-    async def test_failed_session_edit_keeps_the_full_conversation(self):
+    async def test_failed_session_edit_keeps_original_but_never_submits_it(self):
         text = ("user: Build the workflow.\n\nassistant: Checking the implementation.\n\n"
                 "assistant: Delivered. Platform verification is pending.\n\n"
                 "user: Keep the existing interfaces.\n\nassistant: The interfaces are unchanged.")
         self.session(text)
         self.processor.model = Model(RuntimeError("Session model unavailable"))
         await self.processor.step()
-        job = self.adapter.submit.await_args.args[0]
-        self.assertEqual(job["refined_text"], text)
-        self.assertEqual(job["parsed_text"], text)
+        self.adapter.submit.assert_not_awaited()
+        self.assertEqual(self.current()["original"], text.encode())
+        self.assertEqual(self.current()["parsed_text"], text)
         self.assertEqual(self.processor.model.calls, 1)
-        self.assertEqual(self.current()["status"], "retaining")
+        self.assertEqual(self.current()["status"], "retrying")
+        for _ in range(2):
+            self.store.update(self.current()["job_id"], next_at=0)
+            await self.processor.step()
+        self.assertEqual(self.current()["status"], "degraded")
+        self.assertEqual(self.store.public(self.current())["refine_info"]["refine_status"], "degraded")
+        self.store.retry(self.current()["job_id"], "bank", "owner")
+        self.assertEqual(self.current()["status"], "pending")
 
     async def test_session_edit_uses_the_same_document_and_preserves_original_bytes(self):
         text = ("user: Build the workflow and keep interfaces.\n\n"
@@ -169,14 +177,17 @@ class JobsTest(unittest.IsolatedAsyncioTestCase):
         self.session("user: v1")
         self.session("user: v2")
         self.session("user: v3")
+        self.processor.model = Model("v3")
         await self.processor.step()
         self.assertEqual(self.adapter.submit.await_count, 1)
-        self.assertEqual(self.adapter.submit.await_args.args[0]["refined_text"], "user: v3")
+        self.assertEqual(self.adapter.submit.await_args.args[0]["refined_text"], "v3")
 
     async def test_version_during_retain_waits_for_inflight_operation(self):
         first = self.session("user: v1")
+        self.processor.model = Model("v1")
         await self.processor.step()
         self.session("user: v1\n\nuser: v2")
+        self.processor.model = Model("v2")
         row = self.current()
         self.assertEqual(row["inflight_id"], first["retain_id"])
         await self.processor.step()
@@ -186,6 +197,53 @@ class JobsTest(unittest.IsolatedAsyncioTestCase):
         await self.processor.step()
         self.assertEqual(self.adapter.submit.await_count, 2)
         self.assertIsNone(self.current()["inflight_id"])
+
+    async def test_failed_new_revision_does_not_replace_a_good_published_note(self):
+        self.processor.model = Model("Delivered.")
+        self.session("user: Build it.\n\nassistant: Delivered.")
+        await self.processor.step()
+        self.adapter.status.return_value = {"status": "completed"}
+        await self.processor.step()
+        published_hash = self.current()["published_hash"]
+        self.session("user: Build it.\n\nassistant: Delivered.\n\nuser: Add more.")
+        self.processor.model = Model(RuntimeError("private error"))
+        await self.processor.step()
+        self.assertEqual(self.adapter.submit.await_count, 1)
+        self.assertEqual(self.current()["published_hash"], published_hash)
+        self.assertTrue(self.store.public(self.current())["has_published_version"])
+
+    async def test_unchanged_note_skips_retain(self):
+        self.processor.model = Model("Delivered.")
+        self.session("user: Build it.\n\nassistant: Delivered.")
+        await self.processor.step()
+        self.adapter.status.return_value = {"status": "completed"}
+        await self.processor.step()
+        self.session("user: Build it.\n\nassistant: Delivered.\n\nuser: Thanks.")
+        await self.processor.step()
+        self.assertEqual(self.adapter.submit.await_count, 1)
+        self.assertEqual(self.current()["stage"], "unchanged")
+
+    async def test_ambiguous_submit_retry_reuses_operation_uuid(self):
+        self.artifact()
+        first = self.current()["retain_id"]
+        self.adapter.submit.side_effect = ConnectionError()
+        await self.processor.step()
+        self.assertEqual(self.current()["retain_id"], first)
+        self.store.update(self.current()["job_id"], status="failed")
+        self.store.retry(self.current()["job_id"], "bank", "owner")
+        self.assertEqual(self.current()["retain_id"], first)
+
+    async def test_new_upload_waits_for_ambiguous_older_submission(self):
+        self.artifact()
+        first = self.current()["retain_id"]
+        self.adapter.submit.side_effect = ConnectionError()
+        await self.processor.step()
+        self.artifact(body=b"# Note\n\nThe service listens on port 18888. Changed.")
+        self.assertEqual(self.current()["inflight_id"], first)
+        self.adapter.submit.side_effect = None
+        await self.processor.step()
+        self.assertEqual(self.adapter.submit.await_count, 1)
+        self.adapter.status.assert_awaited_once()
 
     async def test_identical_upload_is_noop_but_failed_requeues(self):
         first = self.artifact()
@@ -246,6 +304,19 @@ class JobsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.store.get(job["job_id"], "bank", "other"))
         with self.assertRaises(PermissionError):
             self.store.put("bank", "other", "artifact", "doc", "note.md", b"x", {})
+
+    async def test_schema_upgrade_preserves_existing_original_and_job(self):
+        old = self.session("user: Keep the complete original.")
+        with self.store.connect() as db:
+            db.execute("ALTER TABLE documents DROP COLUMN published_hash")
+            db.execute("ALTER TABLE documents DROP COLUMN inflight_hash")
+            db.execute("DROP TABLE session_segments")
+        upgraded = JobStore(self.store.path)
+        row = upgraded.get(old["job_id"], "bank", "owner")
+        self.assertEqual(row["original"], old["original"])
+        self.assertEqual(row["status"], "pending")
+        self.assertIsNone(row["published_hash"])
+        self.assertIsNone(upgraded.segment(row, 0, "not-present"))
 
 
 if __name__ == "__main__":

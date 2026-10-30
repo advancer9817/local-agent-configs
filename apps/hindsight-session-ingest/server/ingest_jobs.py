@@ -12,29 +12,18 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-import re
 import sqlite3
 import time
 import uuid
 
-from artifact_refine import condense, condense_session, parse_original, refine_archive
+from artifact_refine import condense, parse_original, refine_archive
 from ingest_safety import PIPELINE_VERSION
 from session_documents import redact
+from session_refine import SessionRefineError, clean_session, refine_session
 
 MAX_ATTEMPTS = 3
 ACTIVE = ("pending", "processing", "retrying", "submitting", "retaining")
 TERMINAL = ("completed", "failed", "cancelled", "not_found")
-# Recall context injected by our own hook is history, not new conversation.
-NOISE = [
-    re.compile(r"\[Hindsight 历史背景[^\n]*\n.*?(?=\n\n(?:user|assistant): |$)", re.S),
-    re.compile(r"<(external_codex_git_state|environment_context|codex_apps_client_time_context|system-reminder)\b.*?</\1>", re.S),
-]
-
-
-def clean_session(text):
-    for pattern in NOISE:
-        text = pattern.sub("", text)
-    return redact(re.sub(r"\n{3,}", "\n\n", text)).strip()
 
 
 def revision_key(kind, data, metadata, auto_commit):
@@ -62,6 +51,15 @@ class JobStore:
                 PRIMARY KEY (bank_id, document_id))""")
             db.execute("CREATE INDEX IF NOT EXISTS documents_ready ON documents(status,next_at)")
             db.execute("CREATE INDEX IF NOT EXISTS documents_session ON documents(bank_id,session_id)")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(documents)")}
+            for field in ("published_hash", "inflight_hash"):
+                if field not in columns:
+                    db.execute(f"ALTER TABLE documents ADD COLUMN {field} TEXT")
+            db.execute("""CREATE TABLE IF NOT EXISTS session_segments (
+                bank_id TEXT NOT NULL, document_id TEXT NOT NULL, owner TEXT NOT NULL,
+                segment_no INTEGER NOT NULL, cache_key TEXT NOT NULL, note TEXT NOT NULL,
+                source_chars INTEGER NOT NULL, updated REAL NOT NULL,
+                PRIMARY KEY (bank_id, document_id, owner, segment_no))""")
         self.path.chmod(0o600)
 
     @contextmanager
@@ -89,27 +87,56 @@ class JobStore:
             if row is not None and row["owner"] != owner:
                 raise PermissionError("Document belongs to another owner")
             if row is not None and row["revision"] == revision:
-                if row["status"] == "failed":
+                if row["status"] in ("failed", "degraded"):
                     db.execute("""UPDATE documents SET status='pending', stage='received', attempts=0,
-                        next_at=0, error=NULL, retain_id=?, updated=? WHERE job_id=?""",
-                               (str(uuid.uuid4()), now, row["job_id"]))
+                        next_at=0, error=NULL, updated=? WHERE job_id=?""", (now, row["job_id"]))
             else:
                 # A version already handed to native retain keeps running; the new one waits for it.
                 inflight = None
+                inflight_hash = None
+                published_hash = row["published_hash"] if row else None
                 if row is not None:
-                    inflight = row["retain_id"] if row["status"] in ("submitting", "retaining") else row["inflight_id"]
+                    submitted = row["status"] in ("submitting", "retaining") or (
+                        row["stage"] == "retain" and row["status"] in ("retrying", "failed"))
+                    inflight = row["retain_id"] if submitted else row["inflight_id"]
+                    inflight_hash = (self.content_hash(row["refined_text"]) if submitted
+                                     else row["inflight_hash"])
+                    if row["status"] == "completed":
+                        published_hash = self.content_hash(row["refined_text"])
                 values = dict(
                     bank_id=bank_id, document_id=document_id, job_id=str(uuid.uuid4()), owner=owner,
                     kind=kind, session_id=metadata.get("session_id"), filename=filename, original=data,
                     revision=revision, request=json.dumps(payload, ensure_ascii=False), status="pending",
                     stage="received", attempts=0, next_at=0, created=row["created"] if row else now,
                     updated=now, parsed_text=None, refined_text=None, refine_info=None, error=None,
-                    retain_id=str(uuid.uuid4()), inflight_id=inflight, auto_commit=int(auto_commit))
+                    retain_id=str(uuid.uuid4()), inflight_id=inflight, auto_commit=int(auto_commit),
+                    inflight_hash=inflight_hash, published_hash=published_hash)
                 db.execute("INSERT OR REPLACE INTO documents (" + ",".join(values) + ") VALUES ("
                            + ",".join("?" for _ in values) + ")", tuple(values.values()))
             row = db.execute("SELECT * FROM documents WHERE bank_id=? AND document_id=?",
                              (bank_id, document_id)).fetchone()
         return dict(row)
+
+    @staticmethod
+    def content_hash(text):
+        return hashlib.sha256(text.encode()).hexdigest() if text is not None else None
+
+    def segment(self, job, index, key):
+        with self.connect() as db:
+            row = db.execute("""SELECT note FROM session_segments
+                WHERE bank_id=? AND document_id=? AND owner=? AND segment_no=? AND cache_key=?""",
+                (job["bank_id"], job["document_id"], job["owner"], index, key)).fetchone()
+        return row["note"] if row else None
+
+    def save_segment(self, job, index, key, note, source_chars):
+        with self.connect() as db:
+            # A superseded model response must not overwrite a newer revision's cache.
+            if db.execute("SELECT 1 FROM documents WHERE job_id=?", (job["job_id"],)).fetchone() is None:
+                raise RuntimeError("Session revision superseded")
+            db.execute("""INSERT OR REPLACE INTO session_segments
+                (bank_id, document_id, owner, segment_no, cache_key, note, source_chars, updated)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (job["bank_id"], job["document_id"], job["owner"], index, key, note, source_chars, time.time()))
 
     def get(self, job_id, bank_id, owner):
         with self.connect() as db:
@@ -130,7 +157,7 @@ class JobStore:
     def update(self, job_id, **fields):
         """Write only while job_id is still the latest version; False means superseded."""
         allowed = {"status", "stage", "attempts", "next_at", "parsed_text", "refined_text", "refine_info",
-                   "error", "auto_commit", "retain_id", "inflight_id"}
+                   "error", "auto_commit", "retain_id", "inflight_id", "published_hash", "inflight_hash"}
         if not fields or not set(fields) <= allowed:
             raise ValueError("Unsupported job update")
         fields["updated"] = time.time()
@@ -148,10 +175,10 @@ class JobStore:
     def retry(self, job_id, bank_id, owner):
         with self.connect() as db:
             cursor = db.execute("""UPDATE documents SET status='pending', stage='received', attempts=0,
-                next_at=0, error=NULL, retain_id=?, updated=? WHERE job_id=? AND bank_id=? AND owner=?
-                AND status='failed'""", (str(uuid.uuid4()), time.time(), job_id, bank_id, owner))
+                next_at=0, error=NULL, updated=? WHERE job_id=? AND bank_id=? AND owner=?
+                AND status IN ('failed','degraded')""", (time.time(), job_id, bank_id, owner))
         if cursor.rowcount != 1:
-            raise ValueError("Only failed documents can be retried")
+            raise ValueError("Only failed or degraded documents can be retried")
         return self.get(job_id, bank_id, owner)
 
     def commit(self, job_id, bank_id, owner):
@@ -171,8 +198,10 @@ class JobStore:
         result = {key: job[key] for key in ("job_id", "document_id", "filename", "status", "stage", "attempts", "error")}
         result.update(operation_id=job["job_id"], operation_type="server_ingest", kind=job["kind"],
                       session_id=job["session_id"], updated=job["updated"],
+                      has_published_version=bool(job["published_hash"]) or job["status"] == "completed",
                       refine_info=json.loads(job["refine_info"] or "{}"))
         if preview:
+            result["original_text"] = redact(job["original"].decode("utf-8")) if job["kind"] == "session" else None
             result["parsed_text"] = job["parsed_text"] or ""
             result["refined_text"] = job["refined_text"] or ""
         return result
@@ -183,7 +212,7 @@ class IngestProcessor:
         self.store, self.adapter, self.model = store, adapter, model
 
     async def prepare(self, job):
-        """Return (refined, info). Sessions keep the original when light editing fails."""
+        """Return a checked candidate; failure leaves the published document unchanged."""
         kind = job["kind"]
         if kind == "session":
             text = clean_session(job["original"].decode("utf-8"))
@@ -192,7 +221,7 @@ class IngestProcessor:
             request = json.loads(job["request"])
             title = str(request.get("original_title") or request.get("title") or "")
             self.store.update(job["job_id"], stage="refine")
-            return await asyncio.to_thread(condense_session, text, self.model, title)
+            return await asyncio.to_thread(refine_session, text, self.model, title, self.store, job)
         evidence = None
         if job["parsed_text"] is not None:
             parsed = job["parsed_text"]
@@ -227,11 +256,12 @@ class IngestProcessor:
         info.update(artifact_parser=parser, digest_chars=len(parsed), refined_chars=len(refined))
         return refined, info
 
-    def fail(self, job, error):
+    def fail(self, job, error, *, degraded=False, new_operation=False):
         attempts = job["attempts"] + 1
-        self.store.update(job["job_id"], status="failed" if attempts >= MAX_ATTEMPTS else "retrying",
+        self.store.update(job["job_id"],
+                          status=("degraded" if degraded else "failed") if attempts >= MAX_ATTEMPTS else "retrying",
                           attempts=attempts, next_at=time.time() + min(60, 2 ** attempts),
-                          error=error, retain_id=str(uuid.uuid4()))
+                          error=error, retain_id=str(uuid.uuid4()) if new_operation else job["retain_id"])
 
     async def step(self):
         job = self.store.next()
@@ -242,9 +272,10 @@ class IngestProcessor:
             if job["status"] == "retaining":
                 result = await self.adapter.status(job, job["retain_id"])
                 if result["status"] == "completed":
-                    self.store.update(jid, status="completed", stage="done", error=None)
+                    self.store.update(jid, status="completed", stage="done", error=None,
+                                      published_hash=self.store.content_hash(job["refined_text"]))
                 elif result["status"] in TERMINAL:
-                    self.fail(job, "Hindsight retain " + result["status"])
+                    self.fail(job, "Hindsight retain " + result["status"], new_operation=True)
                 else:
                     self.store.update(jid, next_at=time.time() + 2)
                 return True
@@ -254,7 +285,9 @@ class IngestProcessor:
                 if result["status"] not in TERMINAL:
                     self.store.update(jid, next_at=time.time() + 2)
                     return True
-                self.store.update(jid, inflight_id=None)
+                if result["status"] == "completed":
+                    job["published_hash"] = job["inflight_hash"]
+                self.store.update(jid, inflight_id=None, inflight_hash=None, published_hash=job["published_hash"])
             if job["status"] != "submitting":
                 if job["refined_text"] is None:
                     self.store.update(jid, status="processing", stage="parse")
@@ -268,11 +301,17 @@ class IngestProcessor:
                 if not job["auto_commit"]:
                     self.store.update(jid, status="prepared", stage="awaiting_confirmation")
                     return True
+                if job["kind"] == "session" and self.store.content_hash(job["refined_text"]) == job["published_hash"]:
+                    self.store.update(jid, status="completed", stage="unchanged", error=None)
+                    return True
                 if not self.store.update(jid, status="submitting", stage="retain"):
                     return True
             # Fixed operation UUID: resubmitting after a crash returns the original operation.
             await self.adapter.submit(job)
             self.store.update(jid, status="retaining", stage="retain", next_at=0, error=None)
+        except SessionRefineError as error:
+            self.store.update(jid, refine_info=json.dumps(error.info))
+            self.fail(job, "SessionRefineError", degraded=True)
         except Exception as error:
             self.fail(job, type(error).__name__)
         return True
