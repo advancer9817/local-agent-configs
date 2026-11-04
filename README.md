@@ -63,13 +63,10 @@ local-agent-configs/
 │   ├── rules/          # common/ & typescript/ rule sets
 │   ├── scripts/        # statusline.sh
 │   └── plugins_archive/
-├── hermes/             # Hermes Agent configurations & profiles
+├── hermes/             # Hermes Agent configurations
 │   ├── config.yaml
 │   ├── SOUL.md
-│   ├── PROFILE_LIST.txt
 │   ├── memories/
-│   ├── profiles/       # SDLC role profiles
-│   ├── references/
 │   └── plugins/        # custom non-memory plugins; Hindsight installed from catalog
 ├── codex/              # OpenAI Codex CLI configurations
 │   ├── config.toml     # Sanitized config (proxy, providers)

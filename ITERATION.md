@@ -1736,3 +1736,8 @@ git -C /home/advancer/project/local-agent-configs status
 - 删除 `agent.personalities` 多人格块（含 catgirl、kawaii、pirate 等 13 个预设）：覆盖 `~/.hermes/config.yaml`、仓库 `hermes/config.yaml` 及八个 profile 的 `config.yaml`。`display.personality` 本就为空，不影响现有行为；内置预设仍由 Hermes 程序提供，只是不再在配置中重复声明。
 - 备份：`~/.claude/CLAUDE.md.bak-align-hermes-20261104`、`~/.hermes/config.yaml.bak-personalities-20261104`。
 - 未处理：仓库 `hermes/profiles/` 八个 SDLC 角色配置与 `PROFILE_LIST.txt` 仍保留（本机实际 profile 已于今日移入 `.deleted`），是否同步删除待用户确认。
+
+## 2026-11-04 清理 SDLC 角色 profile 与过期备份
+
+- 删除仓库中已不存在于本机的八个 SDLC 角色 profile（`hermes/profiles/`）、`hermes/PROFILE_LIST.txt` 和 `hermes/references/sdlc-role-profiles.md`，README 目录说明同步。恢复脚本对缺失的 `profiles` 目录按空处理，双机交接 45 项测试通过。
+- 本机清理：`~/.hermes/profiles/.deleted` 墓碑目录，以及 Claude、Hermes、cc-switch、Codex 与家目录下 104 项过期备份和旧日志，共约 385 MB；每类备份保留最新一份，在用配置、数据库和凭据不动。

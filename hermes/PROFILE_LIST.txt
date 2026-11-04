@@ -1,5 +1,0 @@
-
- Profile          Model                        Gateway      Alias        Distribution
- ───────────────    ───────────────────────────    ───────────    ───────────    ────────────────────
- ◆default         gemini-3.8-flash             stopped      —            —
-
