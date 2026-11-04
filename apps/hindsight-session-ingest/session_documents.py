@@ -38,6 +38,9 @@ def redact(text):
                   "[REDACTED PRIVATE KEY]", text, flags=re.S)
     text = re.sub(r'(?i)Bearer\s+[A-Za-z0-9_./+=-]+', 'Bearer [REDACTED]', text)
     text = re.sub(r'\b(?:sk-|ghp_|github_pat_|gsk_)[A-Za-z0-9_-]{12,}', '[REDACTED]', text)
+    text = re.sub(r'\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'(?i)(\b(?:idaas[-_][\w-]+|bce[-_][\w-]+|__stripe_mid)\s*=\s*)[^;\s"\r\n]+',
+                  r'\1[REDACTED]', text)
     pattern = r'''(?im)((?<!\w)["']?(?:api[_-]?key|(?:auth|access|refresh|mcp)[_-]?token|token|password|secret)["']?\s*[=:]\s*)("[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}]+)'''
 
     def replace(match):

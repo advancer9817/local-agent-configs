@@ -4,7 +4,7 @@
 # Always exits 0; failure must never block the agent.
 set -uo pipefail
 
-HINDSIGHT_URL="${HINDSIGHT_MCP_URL:-http://35.236.134.50:18888/mcp/mcore-active-snapshot/}"
+HINDSIGHT_URL="${HINDSIGHT_MCP_URL:-http://35.236.134.50:18888/mcp/agent-memory/}"
 TOKEN_FILE="${HINDSIGHT_TOKEN_FILE:-$HOME/.hermes/.hindsight-token}"
 AGENT="${MCORE_AGENT_ID:-claude}"
 

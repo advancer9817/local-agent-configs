@@ -1,7 +1,7 @@
 {
   "mode": "local_external",
   "api_url": "http://35.236.134.50:18888",
-  "bank_id": "mcore-active-snapshot",
+  "bank_id": "agent-memory",
   "memory_mode": "hybrid",
   "auto_recall": true,
   "auto_retain": true,

@@ -11,6 +11,7 @@ import sys
 import urllib.request
 import urllib.parse
 import mimetypes
+import subprocess
 import uuid
 from datetime import datetime, timezone
 from session_documents import (
@@ -187,6 +188,10 @@ def transcript(payload):
                 content = '\n'.join(x.get('text','') for x in content if isinstance(x,dict) and x.get('type') in ('text','input_text','output_text'))
             if isinstance(content,str) and content.strip() and not content.lstrip().startswith(CLAUDE_LOCAL_COMMAND):
                 rows.append(f'{role}: {content.strip()}')
+        if payload.get('catch_up'):
+            # Prompts submitted just now have no answer yet; their Stop hook uploads them with the reply.
+            while rows and rows[-1].startswith('user:'):
+                rows.pop()
         if not rows:
             try:
                 obj=json.loads(p.read_text())
@@ -196,7 +201,8 @@ def transcript(payload):
                         rows.append(f"{m.get('role',m.get('type'))}: {content}")
             except (ValueError,AttributeError):
                 pass
-    if not rows:
+    if not rows and not payload.get('catch_up'):
+        # Catch-up only uploads what the transcript already holds; the pending prompt waits for its reply.
         for role, keys in [('user',['prompt','user_prompt','user_message']),('assistant',['last_assistant_message','assistant_response','response'])]:
             for key in keys:
                 if isinstance(payload.get(key),str) and payload[key].strip():
@@ -243,6 +249,40 @@ def failure(agent, action, exc):
     print(f'[Hindsight] {action} failed ({type(exc).__name__}); no success claimed.',file=sys.stderr)
 
 
+def trace(agent, action, **fields):
+    """Small invocation log so a missing upload can be traced to a hook that never ran."""
+    try:
+        root = Path.home()/'.local/state/hindsight-hooks'
+        root.mkdir(parents=True,exist_ok=True,mode=0o700)
+        p = root/'events.jsonl'
+        if p.exists() and p.stat().st_size > 512*1024:
+            p.replace(root/'events.jsonl.1')
+        with p.open('a') as f:
+            f.write(json.dumps({'time':datetime.now(timezone.utc).isoformat(),'agent':agent,'action':action,**fields})+'\n')
+        p.chmod(0o600)
+    except OSError:
+        pass
+
+
+def catch_up_in_background(payload, agent):
+    """Upload rounds a Stop hook never saw (interrupted or auto-compacted turns).
+
+    Stop only fires when a turn ends normally. The next prompt hook always fires, so it
+    hands the transcript so far to a detached retain run; a no-op when nothing is new.
+    """
+    if agent not in ('codex', 'claude') or not payload.get('transcript_path'):
+        return
+    child = dict(payload, catch_up=True)
+    try:
+        proc = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'retain', '--agent', agent],
+                                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                start_new_session=True)
+        proc.stdin.write(json.dumps(child).encode())
+        proc.stdin.close()
+    except OSError as exc:
+        failure(agent, 'catch-up', exc)
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('action', choices=['recall','retain'])
@@ -251,6 +291,8 @@ def main():
     try:
         payload=json.load(sys.stdin)
         if opts.action == 'recall':
+            trace(opts.agent,'recall',session=str(payload.get('session_id') or '')[:13])
+            catch_up_in_background(payload,opts.agent)
             query=payload.get('prompt') or payload.get('user_prompt') or payload.get('user_message') or ''
             if not isinstance(query,str) or len(query.strip())<4:
                 return
@@ -268,12 +310,15 @@ def main():
                 if opts.agent == 'claude' and payload.get('transcript_path') and not payload.get('session_title'):
                     payload['session_title']=claude_title(payload['transcript_path'])
             if not text:
+                trace(opts.agent,'retain',outcome='empty',catch_up=bool(payload.get('catch_up')))
                 return
             sid=str(payload.get('session_id') or payload.get('conversation_id') or
                     hashlib.sha256(str(payload.get('transcript_path') or payload.get('session_file') or text).encode()).hexdigest())
             state_key='agent-session-'+opts.agent+'-'+hashlib.sha256(sid.encode()).hexdigest()[:24]
             state=Path.home()/'.local/state/hindsight-hooks'/f'{state_key}.json'
             retain(payload,opts.agent,text,sid,state)
+            trace(opts.agent,'retain',session=sid[:13],chars=len(text),catch_up=bool(payload.get('catch_up')),
+                  event=payload.get('hook_event_name'))
     except Exception as exc:
         failure(opts.agent,opts.action,exc)
 

@@ -16,7 +16,7 @@ Desktop=Windows Electron,HERMES_HOME=C:\...\Local\hermes\(desktop-plugins放这)
 §
 排障铁律(0903):用户实测观察>合成测试绿,取证用真实jsonl/CPA usage.sqlite;过程要快出中间结论,久静默必被催
 §
-记忆架构(1019):内置MEMORY/USER.md只放全局环境与偏好;外部provider=hindsight(Bank mcore-active-snapshot，传输按用户选择);项目/任务细节在对应skill与Hindsight,旧条目备份MEMORY.md.bak-20261019
+记忆架构(1019):内置MEMORY/USER.md只放全局环境与偏好;外部provider=hindsight(Bank agent-memory，传输按用户选择);项目/任务细节在对应skill与Hindsight,旧条目备份MEMORY.md.bak-20261019
 §
 TPMS测试入口(1021):tpms-test/tpms.aurobaytech.com仅内网split DNS→私网ALB alb-jx3512xpop66hz0k6p(10.244.47.168/38.116);qai.aurobaytech.com→另一私网ALB;公网NXDOMAIN,gpri-tpms.geely.com内外网均不解析;WSL查内网域名用/mnt/c/Windows/System32/curl.exe
 §

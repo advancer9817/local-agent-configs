@@ -82,14 +82,20 @@ def upsert_hooks(path, agent):
     """Codex hooks.json and Claude settings.json share one shape; only hindsight entries are replaced."""
     config = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     original = json.dumps(config, sort_keys=True)
-    for event, action, timeout in [("UserPromptSubmit", "recall", 45), ("Stop", "retain", 180)]:
+    events = [("UserPromptSubmit", "recall", 45), ("Stop", "retain", 180)]
+    if agent == "codex":
+        # Interrupted turns never reach Stop; Codex reports them through its own event.
+        events.append(("Interrupt", "retain", 180))
+    for event, action, timeout in events:
         groups = config.setdefault("hooks", {}).setdefault(event, [])
         entry = {"type": "command", "command": hook_command(action, agent), "timeout": timeout}
         found = False
         for group in groups:
             for index, old in enumerate(group.get("hooks", [])):
                 if "hindsight-hook.py" in old.get("command", ""):
-                    group["hooks"][index] = entry
+                    # Keep Codex entries intact so upgrades preserve approved hook hashes.
+                    if agent != "codex":
+                        group["hooks"][index] = entry
                     found = True
         if not found:
             groups.append({"hooks": [entry]})

@@ -41,6 +41,14 @@ class BoundaryTest(unittest.TestCase):
         self.assertNotIn("private-material", redacted)
         self.assertNotIn("gsk_", redacted)
 
+    def test_redaction_removes_inline_jwt_and_browser_session_cookies(self):
+        jwt = 'eyJmaXh0dXJlIjoxfQ.payload.signature'
+        text = 'auth: ' + jwt + '; idaas-sessionid=fixture-session; bce-sessionid=fixture-bce'
+        redacted = documents.redact(text)
+        for value in (jwt, 'fixture-session', 'fixture-bce'):
+            self.assertNotIn(value, redacted)
+        self.assertIn('idaas-sessionid=[REDACTED]', redacted)
+
     def test_every_turn_sends_the_complete_session_once(self):
         first = "user: first\n\nassistant: answer"
         post, _ = self.turn(first)
@@ -71,6 +79,33 @@ class BoundaryTest(unittest.TestCase):
                               "assistant: Delivered. Platform verification is pending.")
         post, _ = self.turn(text)
         self.assertEqual(post.call_args.args[1], text)
+
+    def test_next_prompt_uploads_rounds_the_stop_hook_never_saw(self):
+        path = self.root / "transcript.jsonl"
+        rows = [("user", "q1"), ("assistant", "a1"), ("user", "q2 interrupted"), ("assistant", "partial work"),
+                ("user", "q3 just submitted")]
+        path.write_text("\n".join(json.dumps({"payload": {"type": "message", "role": r, "content": t}})
+                                  for r, t in rows))
+        text = self.hook.transcript({"transcript_path": str(path), "catch_up": True})
+        self.assertEqual(text, "user: q1\n\nassistant: a1\n\nuser: q2 interrupted\n\nassistant: partial work")
+        self.assertTrue(self.hook.transcript({"transcript_path": str(path)}).endswith("user: q3 just submitted"))
+        with patch.object(self.hook.subprocess, "Popen") as popen:
+            self.hook.catch_up_in_background({"transcript_path": str(path), "prompt": "q3"}, "codex")
+            self.hook.catch_up_in_background({"transcript_path": str(path)}, "hermes")
+            self.hook.catch_up_in_background({"prompt": "no transcript"}, "codex")
+        self.assertEqual(popen.call_count, 1)
+        sent = json.loads(popen.return_value.stdin.write.call_args.args[0])
+        self.assertTrue(sent["catch_up"])
+
+    def test_catch_up_uploads_nothing_before_the_first_assistant_reply(self):
+        # A first turn interrupted before any reply leaves only user rows; the pending prompt
+        # must not come back through the payload fallback as a one-line session document.
+        path = self.root / "transcript.jsonl"
+        rows = [("user", "# AGENTS.md instructions"), ("user", "[Request interrupted by user]"), ("user", "继续")]
+        path.write_text("\n".join(json.dumps({"payload": {"type": "message", "role": r, "content": t}})
+                                  for r, t in rows))
+        payload = {"transcript_path": str(path), "catch_up": True, "prompt": "继续"}
+        self.assertEqual(self.hook.transcript(payload), "")
 
     def test_failed_upload_records_nothing_so_next_turn_retries(self):
         post, failure = self.turn("user: hi\n\nassistant: hello", error=OSError("offline"))

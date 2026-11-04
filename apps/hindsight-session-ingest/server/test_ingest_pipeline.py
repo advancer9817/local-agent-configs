@@ -1,6 +1,9 @@
 """Regression tests for the server-owned ingestion boundary."""
+import asyncio
+import contextlib
 from pathlib import Path
 import sys
+import threading
 import tempfile
 import unittest
 from unittest.mock import AsyncMock
@@ -317,6 +320,56 @@ class JobsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row["status"], "pending")
         self.assertIsNone(row["published_hash"])
         self.assertIsNone(upgraded.segment(row, 0, "not-present"))
+
+
+class SlowSessionModel(Model):
+    """Session notes block until released; artifact notes answer at once."""
+
+    def __init__(self):
+        super().__init__()
+        self.release = threading.Event()
+
+    def complete(self, prompt, **kwargs):
+        self.calls += 1
+        if "18888" in prompt:
+            return "# Note\n\nThe service listens on port 18888."
+        self.release.wait(10)
+        return "hello"
+
+
+class ConcurrencyTest(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp, asyncTearDown = JobsTest.asyncSetUp, JobsTest.asyncTearDown
+    artifact, session = JobsTest.artifact, JobsTest.session
+
+    async def test_next_skips_documents_already_being_processed(self):
+        self.session("user: hi\n\nassistant: hello")
+        self.artifact()
+        self.assertEqual(self.store.next()["document_id"], "sess")
+        self.assertEqual(self.store.next(exclude={("bank", "sess")})["document_id"], "doc")
+        self.assertIsNone(self.store.next(exclude={("bank", "sess"), ("bank", "doc")}))
+
+    async def test_slow_session_does_not_block_other_documents(self):
+        model = SlowSessionModel()
+        self.processor = IngestProcessor(self.store, self.adapter, model, concurrency=2)
+        self.session("user: hi\n\nassistant: hello")
+        self.artifact()
+        runner = asyncio.create_task(self.processor.run())
+        try:
+            for _ in range(100):
+                if self.store.get(self.status_id("doc"), "bank", "owner")["status"] == "retaining":
+                    break
+                await asyncio.sleep(0.05)
+            self.assertEqual(self.store.get(self.status_id("doc"), "bank", "owner")["status"], "retaining")
+            self.assertEqual(self.store.get(self.status_id("sess"), "bank", "owner")["stage"], "refine")
+        finally:
+            model.release.set()
+            runner.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await runner
+
+    def status_id(self, document_id):
+        with self.store.connect() as db:
+            return db.execute("SELECT job_id FROM documents WHERE document_id=?", (document_id,)).fetchone()[0]
 
 
 if __name__ == "__main__":

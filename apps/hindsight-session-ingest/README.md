@@ -39,6 +39,7 @@
 - 提炼失败不会提交原文，也不会覆盖已入库的合格版本。成功段缓存可供重试复用；自动重试 3 次后状态为 `degraded`，在失败列表中可见，支持手动 retry 或相同原文重新上传。首次整理失败时检索库暂时没有此文档；已有版本则保持旧稿，可通过 `has_published_version` 区分。`completed` 只在 retain 确认完成（或候选正文与已确认版本相同）时标记。
 - 产物和初始化归档必须经过 LLM；模型不可用、超限或输出不合格时不降级入库。
 - 任务表以 (bank, document) 为主键：新版本覆盖未处理的旧版本，相同内容版本不重复处理，前一次 retain 未结束时新版本等待它结束。
+- 协调器最多同时推进 `HINDSIGHT_API_HTTP_CONCURRENCY` 篇文档（默认 3），同一文档从不并发；超长会话整理时不再阻塞其他会话。
 - 状态：pending → processing → submitting → retaining → completed；异常进入 retrying，3 次后 failed（会话提炼不合格为 degraded）；无有效正文为 skipped。failed/degraded 的文档再次上传或调用 retry 会重新排队。
 - 客户端只记录已成功提交的内容哈希；上传失败下一轮自动重传，不需要查询任务。
 - 任务库为单机 SQLite，默认 `/opt/hindsight-research/session-ingest/jobs.sqlite`（0600）。
@@ -85,6 +86,7 @@ HINDSIGHT_API_HTTP_EXTENSION=ingest_extension:SessionIngestExtension
 HINDSIGHT_API_OPERATION_VALIDATOR_EXTENSION=hindsight_session_metadata:SessionDocumentMetadata
 HINDSIGHT_API_HTTP_SPOOL_DIR=/opt/hindsight-research/session-ingest
 HINDSIGHT_API_EMBEDDINGS_OPENAI_BATCH_SIZE=20   # 阿里百炼 embedding 每批最多 20 条
+HINDSIGHT_API_HTTP_CONCURRENCY=3                # 可选：协调器并发文档数，默认 3
 ```
 
 3. 控制台设置 `HOSTNAME=127.0.0.1 PORT=19998 HINDSIGHT_CP_DATAPLANE_API_URL=http://127.0.0.1:18887`；启动网关接管 18888 和 19999。
@@ -105,12 +107,12 @@ cd ../hindsight-initializer && go test ./...
 ```bash
 python3 install.py                        # 自动安装本机已有的 Codex / Claude Code / Hermes
 python3 install.py --agents claude,hermes # 只装指定客户端
-python3 install.py --api-url http://127.0.0.1:18888 --bank mcore-active-snapshot --token-file TOKEN_FILE  # 新电脑
+python3 install.py --api-url http://127.0.0.1:18888 --bank agent-memory --token-file TOKEN_FILE  # 新电脑
 ```
 
 | 客户端 | 每轮召回 | 每轮上传 | 安装位置 |
 | --- | --- | --- | --- |
-| Codex | `UserPromptSubmit` | `Stop`，读 rollout JSONL | `~/.codex/hooks.json`；变更后在 Codex 中确认信任 |
+| Codex | `UserPromptSubmit` | `Stop` 与 `Interrupt`（被中断的轮次），读 rollout JSONL；下一条提问时后台补传 Stop 未覆盖的轮次 | `~/.codex/hooks.json`；变更后在 Codex 中确认信任 |
 | Claude Code | `UserPromptSubmit` | `Stop`，读 `transcript_path`；跳过 `isMeta`、子代理、斜杠命令回显和工具结果 | `~/.claude/settings.json`（`CLAUDE_CONFIG_DIR`） |
 | Hermes | 插件 `pre_llm_call`（≤9,000 字符，低于 Hermes 1 万字符转存阈值） | 插件 `post_llm_call` 后台读 `state.db`；`on_session_end` 补中断轮 | `$HERMES_HOME/plugins/hindsight-memory`，并 `hermes plugins enable` |
 
@@ -119,6 +121,10 @@ python3 install.py --api-url http://127.0.0.1:18888 --bank mcore-active-snapshot
 - 标题：Codex 读线程库；Claude 用 `/rename` 标题或自动标题，Hermes 用会话标题，并随改名更新；都没有时取首个用户请求。
 - 安装器只替换命令中含 `hindsight-hook.py` 的条目，保留 MCORE 等其他钩子；修改前备份（Hermes 插件备份在 `~/.local/lib/hindsight/backups/`，避免被当成插件加载）。新会话生效，正在运行的客户端建议重启。
 - 云端无法读取 Windows/WSL 的本地文件，必须在对应机器分别安装。可视化初始化工具负责存量归档和 MCP，不安装实时钩子。
+
+升级时也保留已有 Hindsight 钩子的完整定义（包括解释器路径和超时），避免改变 Codex 已批准的钩子哈希；新增事件（如 `Interrupt`）作为新条目追加，需在 Codex 中审核一次。
+提问时的补传只上传转录中已有的内容：转录里还没有助手回复时不上传，避免把待回答的提问单独生成一篇文档。
+若钩子显示 `modified`，应恢复先前已批准的定义，或由用户在 Codex 中审核新定义；安装器不自动修改信任记录。
 
 ## 成本
 

@@ -38,5 +38,5 @@ screen_reader_detection_done = true
 hide_full_access_warning = true
 
 [mcp_servers.hindsight]
-url = "http://127.0.0.1:18888/mcp/mcore-active-snapshot/"
+url = "http://127.0.0.1:18888/mcp/agent-memory/"
 http_headers = { Authorization = "Bearer [REDACTED]" }

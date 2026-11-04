@@ -50,7 +50,7 @@ func homePath(parts ...string) string {
 
 func defaultConfig() Config {
 	return Config{
-		Bank: "mcore-active-snapshot", IdleHours: 24, MaxFileMB: 10,
+		Bank: "agent-memory", IdleHours: 24, MaxFileMB: 10,
 		Agents: map[string]AgentConfig{
 			"codex":  {true, homePath(".codex")},
 			"claude": {true, homePath(".claude")},

@@ -67,7 +67,7 @@ def _spawn_background(agent: str, force: bool) -> None:
 def _hindsight_url() -> str:
     return os.environ.get(
         "HINDSIGHT_MCP_URL",
-        "http://35.236.134.50:18888/mcp/mcore-active-snapshot/",
+        "http://35.236.134.50:18888/mcp/agent-memory/",
     )
 
 

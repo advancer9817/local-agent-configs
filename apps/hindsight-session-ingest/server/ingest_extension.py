@@ -18,7 +18,7 @@ from hindsight_api.extensions.http import HttpExtension
 from hindsight_api.models import RequestContext
 
 from artifact_refine import ChatModel, SESSION_REFINE_VERSION
-from ingest_jobs import IngestProcessor, JobStore
+from ingest_jobs import DEFAULT_CONCURRENCY, IngestProcessor, JobStore
 from session_refine import CLEAN_VERSION, recipe_fingerprint
 from ingest_safety import MAX_SOURCE_BYTES, PIPELINE_VERSION, SUFFIXES, artifact_identity, session_identity
 
@@ -288,7 +288,8 @@ class SessionIngestExtension(HttpExtension):
                 except BlockingIOError:
                     await asyncio.sleep(1)
             model = ChatModel.from_environment(self.config)
-            await IngestProcessor(self.store, HindsightAdapter(self.memory), model).run()
+            concurrency = int(self.config.get("concurrency") or DEFAULT_CONCURRENCY)
+            await IngestProcessor(self.store, HindsightAdapter(self.memory), model, concurrency).run()
         self.runner = asyncio.create_task(coordinate())
 
     async def on_shutdown(self):

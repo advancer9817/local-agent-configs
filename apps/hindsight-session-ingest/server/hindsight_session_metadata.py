@@ -41,7 +41,7 @@ class SessionDocumentMetadata(OperationValidatorExtension):
 
     async def _matching_document(self, bank_id, metadata):
         await self._ensure_pool()
-        if bank_id != "mcore-active-snapshot":
+        if bank_id not in ("agent-memory", "mcore-active-snapshot"):
             raise OperationValidationError("Original-title adapter is configured only for this bank.", 409)
         sid = metadata.get("session_id")
         if not sid:
@@ -150,7 +150,7 @@ class SessionDocumentMetadata(OperationValidatorExtension):
                 continue
             item = dict(original)
             metadata["document_kind"] = kind
-            bank_id = getattr(ctx, "bank_id", "mcore-active-snapshot")
+            bank_id = getattr(ctx, "bank_id", "agent-memory")
             existing = await self._matching_document(bank_id, metadata)
             if existing:
                 title, source = existing, "original_title"

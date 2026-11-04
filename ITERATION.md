@@ -1720,3 +1720,19 @@ git -C /home/advancer/project/local-agent-configs status
 - 保留数字、路径及凭据检查；唯一可对应的 Windows/WSL 文件路径恢复原文写法，章节编号不当作新数字事实；必要时最多校正一次无依据字面量。模型不可用或输出不合格时完整清洗正文照常入库，不阻塞会话；字面量检查不是语义完整性证明。
 - 使用真实「千帆报表」会话试跑，读取期间识别并避开了旧候选与新上传状态不一致的问题；最新 178,661 字正文整理为 6,758 字，保留流式包、81 项离线测试与千帆待实测的区别。单篇验证沿用原文档 ID 和原始上传字节，其他历史文档不变。
 - 验证：客户端 24 项、服务端 70 项测试通过，新增完整上下文、原文回退、字面量校正、路径校正、缓存、新版本防覆盖及 HTTP 身份不变测试。运行 API 已备份后部署三个模块并重启，客户端与 worker 不变；已安装模块与仓库逐字一致，独立源码副本 70 项测试及网关 MCP 召回通过。单篇原生 retain 已完成，回读正文与 6,758 字整理稿逐字一致，仍使用原文档 ID。生产凭据、真实会话和验证产物不纳入 Git。
+
+## 2026-11-04 Hindsight 数据仓更名与客户端补传、服务端并发
+
+- 记忆库由 `mcore-active-snapshot` 更名为 `agent-memory`：同步 Codex MCP 地址、Hermes 主配置与八个 profile 的 Hindsight 配置、插件与钩子默认值、迁移脚本、初始化应用默认数据仓、README 示例与 Hermes/Claude 指令文件中的库名。
+- 客户端钩子：提问时后台补传 Stop 未覆盖的轮次（被中断或自动压缩的轮次），只上传转录中已有的内容，待回答的提问不单独成篇；新增调用轨迹日志 `~/.local/state/hindsight-hooks/events.jsonl`（超过 512 KiB 轮转，权限 600）；Codex 新增 `Interrupt` 事件钩子，升级时保留已批准的钩子定义以免改变信任哈希，新增事件需在 Codex 中审核一次。
+- 服务端：协调器最多同时推进 `HINDSIGHT_API_HTTP_CONCURRENCY` 篇文档（默认 3），同一文档从不并发，超长会话整理不再阻塞其他会话。
+- 会话脱敏新增 JWT 与 `idaas-`/`bce-`/`__stripe_mid` 类 Cookie 值的遮蔽。
+- 验证：客户端 14 项测试通过；服务端 79 项中 78 项通过，其余 1 项（`test_ingest_http`）因本机未安装 `hindsight_api` 无法导入，属环境缺失，未执行。未重启任何服务。
+
+## 2026-11-04 Claude Code 约束对齐 Hermes，移除 Hermes 多人格配置
+
+- 起因：Claude Code 任意消息被 `reasoning_extraction` 拦截。抓取真实请求并逐段消融，定位到 `CLAUDE.md` 交互规范段中要求“陈述内部思维链”的一行；改写为中性措辞后网关返回 `end_turn`，原文重放稳定拦截。
+- `claude/CLAUDE.md` 与 `hermes/SOUL.md` 内容统一（实时 `~/.claude/CLAUDE.md` 同步为 `~/.hermes/SOUL.md`）：Claude Code 不再带“三段式 / 内部思维链”规范和网关并发守则段，改用 Hermes 的 Hindsight 接入、意图对齐硬门禁、安全红线与交付路径。该文件含开工硬门禁，Claude Code 此后改代码前须先获用户确认。
+- 删除 `agent.personalities` 多人格块（含 catgirl、kawaii、pirate 等 13 个预设）：覆盖 `~/.hermes/config.yaml`、仓库 `hermes/config.yaml` 及八个 profile 的 `config.yaml`。`display.personality` 本就为空，不影响现有行为；内置预设仍由 Hermes 程序提供，只是不再在配置中重复声明。
+- 备份：`~/.claude/CLAUDE.md.bak-align-hermes-20261104`、`~/.hermes/config.yaml.bak-personalities-20261104`。
+- 未处理：仓库 `hermes/profiles/` 八个 SDLC 角色配置与 `PROFILE_LIST.txt` 仍保留（本机实际 profile 已于今日移入 `.deleted`），是否同步删除待用户确认。

@@ -22,6 +22,7 @@ from session_documents import redact
 from session_refine import SessionRefineError, clean_session, refine_session
 
 MAX_ATTEMPTS = 3
+DEFAULT_CONCURRENCY = 3  # documents advanced at once by the coordinator
 ACTIVE = ("pending", "processing", "retrying", "submitting", "retaining")
 TERMINAL = ("completed", "failed", "cancelled", "not_found")
 
@@ -166,11 +167,13 @@ class JobStore:
                                 + " WHERE job_id=?", (*fields.values(), job_id))
         return cursor.rowcount == 1
 
-    def next(self):
+    def next(self, exclude=()):
+        """Oldest ready job whose (bank_id, document_id) is not in exclude, i.e. not already being advanced."""
+        # One row per document, so len(exclude) + 1 candidates always include a free one if any exists.
         with self.connect() as db:
-            row = db.execute("SELECT * FROM documents WHERE status IN (?,?,?,?,?) AND next_at<=? "
-                             "ORDER BY next_at, updated LIMIT 1", (*ACTIVE, time.time())).fetchone()
-        return dict(row) if row else None
+            rows = db.execute("SELECT * FROM documents WHERE status IN (?,?,?,?,?) AND next_at<=? "
+                              "ORDER BY next_at, updated LIMIT ?", (*ACTIVE, time.time(), len(exclude) + 1)).fetchall()
+        return next((dict(row) for row in rows if (row["bank_id"], row["document_id"]) not in exclude), None)
 
     def retry(self, job_id, bank_id, owner):
         with self.connect() as db:
@@ -208,8 +211,10 @@ class JobStore:
 
 
 class IngestProcessor:
-    def __init__(self, store, adapter, model):
+    def __init__(self, store, adapter, model, concurrency=DEFAULT_CONCURRENCY):
         self.store, self.adapter, self.model = store, adapter, model
+        # Bounded: one long session refine must not hold back every other document.
+        self.concurrency = max(1, int(concurrency))
 
     async def prepare(self, job):
         """Return a checked candidate; failure leaves the published document unchanged."""
@@ -267,6 +272,9 @@ class IngestProcessor:
         job = self.store.next()
         if job is None:
             return False
+        return await self.advance(job)
+
+    async def advance(self, job):
         jid = job["job_id"]
         try:
             if job["status"] == "retaining":
@@ -316,12 +324,35 @@ class IngestProcessor:
             self.fail(job, type(error).__name__)
         return True
 
+    def fill(self, active):
+        """Start ready jobs up to the limit; a document is never advanced twice at once."""
+        while len(active) < self.concurrency:
+            job = self.store.next(exclude=set(active.values()))
+            if job is None:
+                return
+            active[asyncio.create_task(self.advance(job))] = (job["bank_id"], job["document_id"])
+
     async def run(self):
-        while True:
-            try:
-                worked = await self.step()
-            except Exception:
-                logging.getLogger(__name__).exception("Ingestion coordinator could not advance its queue")
-                await asyncio.sleep(2)
-                continue
-            await asyncio.sleep(0.1 if worked else 1)
+        log = logging.getLogger(__name__)
+        active = {}
+        try:
+            while True:
+                try:
+                    self.fill(active)
+                except Exception:
+                    log.exception("Ingestion coordinator could not read its queue")
+                    await asyncio.sleep(2)
+                    continue
+                if not active:
+                    await asyncio.sleep(1)
+                    continue
+                done, _ = await asyncio.wait(active, timeout=1, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    active.pop(task)
+                    if not task.cancelled() and task.exception() is not None:
+                        log.error("Ingestion coordinator could not advance a job", exc_info=task.exception())
+                if done:
+                    await asyncio.sleep(0.1)
+        finally:
+            for task in active:
+                task.cancel()
