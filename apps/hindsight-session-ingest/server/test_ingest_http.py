@@ -47,7 +47,9 @@ class HttpTest(unittest.TestCase):
     def test_requires_authentication_and_bank_scope(self):
         self.assertEqual(self.client.get(self.url + "/capabilities").status_code, 401)
         self.assertEqual(self.client.get("/ext/ingest/banks/other/capabilities", headers=self.headers).status_code, 403)
-        self.assertEqual(self.client.get(self.url + "/capabilities", headers=self.headers).status_code, 200)
+        response = self.client.get(self.url + "/capabilities", headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["session_preview"])
 
     def test_session_and_artifacts_in_one_request_use_server_identities(self):
         response = self.upload(files=[("note.md", b"# Note\n\nUseful body.")])
@@ -68,6 +70,40 @@ class HttpTest(unittest.TestCase):
         self.assertNotEqual(first["job_id"], second["job_id"])
         jobs = self.client.get(self.url + "/jobs", headers=self.headers).json()["jobs"]
         self.assertEqual(len(jobs), 1)
+
+    def test_bootstrap_session_can_require_preview_confirmation(self):
+        manifest = {"source_id": "machine", "session_id": "bootstrap-sid", "agent": "codex",
+                    "title": "历史会话", "auto_commit": False}
+        response = self.upload("user: request\n\nassistant: result", manifest=manifest)
+        self.assertEqual(response.status_code, 200, response.text)
+        job_id = response.json()["accepted"][0]["job_id"]
+        with self.ext.store.connect() as db:
+            row = db.execute("SELECT auto_commit FROM documents WHERE job_id=?", (job_id,)).fetchone()
+        self.assertEqual(row["auto_commit"], 0)
+        self.ext.store.update(job_id, status="prepared", refined_text="# Historical session")
+        committed = self.client.post(self.url + "/jobs/" + job_id + "/commit", headers=self.headers)
+        self.assertEqual(committed.status_code, 200)
+        self.assertEqual(committed.json()["status"], "pending")
+        self.assertTrue(self.ext.store.get(job_id, "b", self._owner(job_id))["auto_commit"])
+
+    def _owner(self, job_id):
+        with self.ext.store.connect() as db:
+            return db.execute("SELECT owner FROM documents WHERE job_id=?", (job_id,)).fetchone()["owner"]
+
+    def test_realtime_uploads_still_auto_commit(self):
+        response = self.upload()
+        job_id = response.json()["accepted"][0]["job_id"]
+        self.assertTrue(self.ext.store.get(job_id, "b", self._owner(job_id))["auto_commit"])
+
+    def test_auto_commit_requires_a_boolean(self):
+        for value in ("false", 0, None):
+            manifest = {"source_id": "machine", "session_id": "sid", "agent": "codex",
+                        "title": "History", "auto_commit": value}
+            with self.subTest(value=value):
+                response = self.upload(manifest=manifest)
+                self.assertEqual(response.status_code, 400)
+        with self.ext.store.connect() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM documents").fetchone()[0], 0)
 
     def test_session_edit_version_keeps_the_original_upload_and_document_identity(self):
         text = "user: Build the workflow.\n\nassistant: Delivered; platform verification pending."

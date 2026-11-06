@@ -509,6 +509,41 @@ func scanHermesDB(ctx context.Context, path string, age time.Duration, max int64
 	if err != nil {
 		return err
 	}
+	columns := map[string]bool{}
+	info, err := tx.QueryContext(ctx, "PRAGMA table_info(messages)")
+	if err != nil {
+		return err
+	}
+	for info.Next() {
+		var cid, notnull, primary int
+		var name, datatype string
+		var defaultValue any
+		if err = info.Scan(&cid, &name, &datatype, &notnull, &defaultValue, &primary); err != nil {
+			info.Close()
+			return err
+		}
+		columns[name] = true
+	}
+	err = info.Err()
+	info.Close()
+	if err != nil {
+		return err
+	}
+	where := []string{"session_id=?", "role IN ('user','assistant')"}
+	if columns["active"] {
+		if columns["compacted"] {
+			where = append(where, "(COALESCE(active,1)=1 OR COALESCE(compacted,0)=1)")
+		} else {
+			where = append(where, "COALESCE(active,1)=1")
+		}
+	}
+	if columns["_compressed_summary"] {
+		where = append(where, "COALESCE(_compressed_summary,0)=0")
+	}
+	if columns["display_kind"] {
+		where = append(where, "(display_kind IS NULL OR display_kind='steer')")
+	}
+	query := "SELECT role,content FROM messages WHERE " + strings.Join(where, " AND ") + " ORDER BY timestamp,id"
 	for _, entry := range sessions {
 		s := Source{Agent: "hermes", Path: path, SessionID: entry.id, Title: entry.title, Project: entry.cwd}
 		if !entry.end.Valid || time.Since(time.Unix(int64(entry.end.Float64), 0)) < age {
@@ -519,12 +554,7 @@ func scanHermesDB(ctx context.Context, path string, age time.Duration, max int64
 			continue
 		}
 		s.Modified = time.Unix(int64(entry.end.Float64), 0).UTC().Format(time.RFC3339)
-		// Active flag excludes rewound messages on Hermes versions that support it.
-		query := "SELECT role,content FROM messages WHERE session_id=? AND role IN ('user','assistant') AND COALESCE(active,1)=1 ORDER BY timestamp,id"
 		msgs, err := tx.QueryContext(ctx, query, entry.id)
-		if err != nil {
-			msgs, err = tx.QueryContext(ctx, "SELECT role,content FROM messages WHERE session_id=? AND role IN ('user','assistant') ORDER BY timestamp,id", entry.id)
-		}
 		if err != nil {
 			return err
 		}

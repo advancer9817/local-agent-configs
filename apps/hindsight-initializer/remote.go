@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,13 +38,17 @@ func requestJSON(ctx context.Context, method, address, token string, payload, re
 		return errors.New("无效请求地址")
 	}
 	req.Header.Set("Content-Type", "application/json")
+	return requestResponse(req, token, result)
+}
+
+func requestResponse(req *http.Request, token string, result any) error {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := newHTTPClient(180 * time.Second).Do(req)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if req.Context().Err() != nil {
+			return req.Context().Err()
 		}
 		return errors.New("请求未完成（网络、证书或超时），请检查连接；未记录响应正文")
 	}
@@ -65,6 +70,33 @@ func requestJSON(ctx context.Context, method, address, token string, payload, re
 		return errors.New("服务返回的不是有效 JSON")
 	}
 	return nil
+}
+
+func requestMultipart(ctx context.Context, address, token string, fields map[string]string,
+	fileField, filename string, data []byte, result any) error {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return err
+		}
+	}
+	part, err := writer.CreateFormFile(fileField, filename)
+	if err != nil {
+		return err
+	}
+	if _, err = part.Write(data); err != nil {
+		return err
+	}
+	if err = writer.Close(); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, &body)
+	if err != nil {
+		return errors.New("无效请求地址")
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return requestResponse(req, token, result)
 }
 
 func bankURL(c Config, path string) string {

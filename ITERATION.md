@@ -1741,3 +1741,12 @@ git -C /home/advancer/project/local-agent-configs status
 
 - 删除仓库中已不存在于本机的八个 SDLC 角色 profile（`hermes/profiles/`）、`hermes/PROFILE_LIST.txt` 和 `hermes/references/sdlc-role-profiles.md`，README 目录说明同步。恢复脚本对缺失的 `profiles` 目录按空处理，双机交接 45 项测试通过。
 - 本机清理：`~/.hermes/profiles/.deleted` 墓碑目录，以及 Claude、Hermes、cc-switch、Codex 与家目录下 104 项过期备份和旧日志，共约 385 MB；每类备份保留最新一份，在用配置、数据库和凭据不动。
+
+## 2026-11-06 初始化历史会话与实时整理流程对齐
+
+- 历史会话逐条调用 `/sessions`，复用现行清洗、分段笔记、主线概览、锚点校验与失败保护，不再把多个会话混合为一份档案；普通文档继续按项目批量调用 `/archives`，保留来源映射和独立模型核验。
+- 初始化会话传入布尔值 `auto_commit=false`，保留准备区预览与再次确认；实时钩子省略此字段时仍默认自动入库。服务端公布 `session_preview` 能力，旧服务端未声明时初始化器在上传前拒绝，避免忽略预览要求后误入库。
+- 初始化器新连接默认 Bank 为 `agent-memory`；已有明确连接设置不自动覆盖。任务降级立即显示，不等待二十分钟超时；历史会话与旧文档归档收据分开，原有普通文档任务可继续。
+- Hermes 扫描与实时上传器对齐：恢复 `compacted=1` 的存留原始轮次，排除生成的压缩摘要、回退消息和系统提示，保留 steer 插话；只读读取与大小限制保持不变。
+- 验证：服务端 111 项 Python 测试、Go 测试和竞态检测、go vet、差异检查通过；Windows/Linux 初始化器均构建成功。Playwright 使用隔离数据与模拟远端验证混合会话/文档、预览前零入库、两次准备与两次确认入库、重复确认幂等及桌面/手机视口。Windows WebView2/DPAPI 尚未真机验收。
+- 按用户授权准备部署、重启 API 并提交推送；生产运行文件和任务库已在仓库外备份，一致性备份 `PRAGMA integrity_check` 通过。源码不包含备份、原始会话、认证配置、构建产物或截图。

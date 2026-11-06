@@ -97,9 +97,9 @@ class JobsTest(unittest.IsolatedAsyncioTestCase):
                               {"source_id": "machine-a", "source_path": "/work/note.md", "session_id": session},
                               auto_commit=auto_commit)
 
-    def session(self, text):
+    def session(self, text, auto_commit=True):
         return self.store.put("bank", "owner", "session", "sess", "session.txt", text.encode(),
-                              {"source_id": "machine-a", "session_id": "one"})
+                              {"source_id": "machine-a", "session_id": "one"}, auto_commit=auto_commit)
 
     def current(self):
         with self.store.connect() as db:
@@ -117,6 +117,25 @@ class JobsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.processor.model.calls, 1)
         self.assertEqual(self.current()["refined_text"], "hello")
         self.assertEqual(self.current()["status"], "retaining")
+        self.adapter.status.return_value = {"status": "completed"}
+        await self.processor.step()
+        self.assertEqual(self.current()["status"], "completed")
+
+    async def test_bootstrap_session_uses_same_refinement_but_waits_for_commit(self):
+        self.session("user: Build it.\n\nassistant: Delivered; deployment pending.", auto_commit=False)
+        self.processor.model = Model("# Note\n\nAssistant reports delivery; deployment is pending.")
+        await self.processor.step()
+        preview = self.current()
+        self.assertEqual(preview["status"], "prepared")
+        self.assertEqual(preview["stage"], "awaiting_confirmation")
+        self.assertEqual(self.store.public(preview)["refine_info"]["refine_status"], "llm_session")
+        self.assertEqual(self.processor.model.calls, 1)
+        self.adapter.submit.assert_not_awaited()
+        self.store.commit(preview["job_id"], "bank", "owner")
+        await self.processor.step()
+        self.adapter.submit.assert_awaited_once()
+        self.assertEqual(self.processor.model.calls, 1)
+        self.assertEqual(self.current()["refined_text"], preview["refined_text"])
         self.adapter.status.return_value = {"status": "completed"}
         await self.processor.step()
         self.assertEqual(self.current()["status"], "completed")

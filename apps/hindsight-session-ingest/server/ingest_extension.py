@@ -154,7 +154,8 @@ class SessionIngestExtension(HttpExtension):
         async def capabilities(bank_id: str, request: Request):
             await authorize(request, bank_id)
             return {"pipeline_version": PIPELINE_VERSION, "server_processing": True, "requires_llm": True,
-                    "session_upload": True, "model_configured": ChatModel.from_environment(self.config) is not None}
+                    "session_upload": True, "session_preview": True,
+                    "model_configured": ChatModel.from_environment(self.config) is not None}
 
         @router.post("/ingest/banks/{bank_id}/sessions")
         async def sessions(bank_id: str, request: Request):
@@ -181,6 +182,9 @@ class SessionIngestExtension(HttpExtension):
                 entries = manifest.get("artifacts") or []
                 if not isinstance(entries, list) or len(entries) > MAX_ARTIFACTS:
                     raise ValueError("Too many artifacts")
+                auto_commit = manifest.get("auto_commit", True)
+                if not isinstance(auto_commit, bool):
+                    raise ValueError("auto_commit must be a boolean")
                 for index, entry in enumerate(entries):
                     upload = form.get("file" + str(index))
                     if upload is None or not isinstance(entry, dict):
@@ -195,7 +199,8 @@ class SessionIngestExtension(HttpExtension):
             accepted = []
             for kind, document_id, filename, data, metadata in documents:
                 try:
-                    job = self.store.put(bank_id, owner, kind, document_id, filename, data, dict(metadata, **extra))
+                    job = self.store.put(bank_id, owner, kind, document_id, filename, data, dict(metadata, **extra),
+                                         auto_commit=auto_commit)
                 except PermissionError as error:
                     raise HTTPException(409, str(error)) from error
                 accepted.append(self.store.public(job))

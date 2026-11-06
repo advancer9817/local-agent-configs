@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,6 +29,21 @@ func oldFile(t *testing.T, path, body string) {
 	old := time.Now().Add(-48 * time.Hour)
 	if err := os.Chtimes(path, old, old); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDefaultBankAndExistingConnection(t *testing.T) {
+	if defaultConfig().Bank != "agent-memory" {
+		t.Fatal("new clients must default to agent-memory")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	mustFile(t, filepath.Join(home, ".config", "hindsight", "connection.json"),
+		`{"api_url":"https://memory.example","bank_id":"custom-bank","mcp_token":"fixture"}`)
+	c, err := loadConfig(t.TempDir())
+	if err != nil || c.Bank != "custom-bank" || c.Token != "fixture" {
+		t.Fatalf("existing explicit connection was not preserved: %+v %v", c, err)
 	}
 }
 
@@ -115,6 +131,44 @@ func TestHermesReadOnlyWAL(t *testing.T) {
 	}
 }
 
+func TestHermesCompactionKeepsOriginalTurnsNotGeneratedSummary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, q := range []string{
+		"CREATE TABLE sessions(id TEXT,title TEXT,cwd TEXT,started_at REAL,ended_at REAL)",
+		"CREATE TABLE messages(id INTEGER,session_id TEXT,role TEXT,content TEXT,timestamp REAL,active INTEGER,compacted INTEGER,_compressed_summary INTEGER,display_kind TEXT)",
+		"INSERT INTO sessions VALUES('ended','History','/p',1,2)",
+		"INSERT INTO messages VALUES(1,'ended','user','original request',1,0,1,0,NULL)",
+		"INSERT INTO messages VALUES(2,'ended','assistant','original delivery',2,0,1,0,NULL)",
+		"INSERT INTO messages VALUES(3,'ended','assistant','generated summary',3,1,0,1,NULL)",
+		"INSERT INTO messages VALUES(4,'ended','assistant','rewound message',4,0,0,0,NULL)",
+		"INSERT INTO messages VALUES(5,'ended','user','model switched',5,1,0,0,'system')",
+		"INSERT INTO messages VALUES(6,'ended','user','steer request',6,1,0,0,'steer')",
+		"INSERT INTO messages VALUES(7,'ended','assistant','latest result',7,1,0,0,NULL)",
+	} {
+		if _, err = db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var sources []Source
+	err = scanHermesDB(context.Background(), path, 24*time.Hour, 1024*1024, func(s Source) error {
+		sources = append(sources, s)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "user: original request\n\nassistant: original delivery\n\nuser: steer request\n\nassistant: latest result"
+	if len(sources) != 1 || sources[0].Text != want {
+		t.Fatalf("original history not preserved: %+v", sources)
+	}
+}
+
 func TestCompactionUsesServerJobsAndReusesReceipts(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +190,7 @@ func TestCompactionUsesServerJobsAndReusesReceipts(t *testing.T) {
 	inv := Inventory{}
 	for i := range 2 {
 		body := strings.Repeat("重要的历史迁移需求。", 1000) + fmt.Sprint(i)
-		s := Source{ID: fmt.Sprintf("source%d", i), Agent: "codex", Project: "/same-project", Title: "历史会话", SHA: hashText(body), Chars: len([]rune(body)), Status: "ready"}
+		s := Source{ID: fmt.Sprintf("source%d", i), Agent: "document", Project: "/same-project", Title: "历史文档", SHA: hashText(body), Chars: len([]rune(body)), Status: "ready"}
 		inv.Sources = append(inv.Sources, s)
 		mustFile(t, filepath.Join(dir, "raw", s.ID+".md"), body)
 	}
@@ -151,6 +205,172 @@ func TestCompactionUsesServerJobsAndReusesReceipts(t *testing.T) {
 	_, err = compactInventory(context.Background(), c, inv, dir, shared, func(string) {})
 	if err != nil || calls.Load() != 1 {
 		t.Fatalf("server receipt not reused %v", err)
+	}
+}
+
+func TestSessionPreviewUsesSharedPipelineAndReusesReceipts(t *testing.T) {
+	dir, shared := t.TempDir(), t.TempDir()
+	var uploads atomic.Int32
+	body := "user: Keep every stage.\n\nassistant: " + strings.Repeat("historical detail ", 12000)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/capabilities"):
+			respond(w, 200, map[string]bool{"session_preview": true})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/sessions"):
+			uploads.Add(1)
+			if r.Header.Get("Authorization") != "Bearer fixture" {
+				t.Error("missing authentication")
+			}
+			if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+				t.Error(err)
+				w.WriteHeader(400)
+				return
+			}
+			defer r.MultipartForm.RemoveAll()
+			var manifest struct {
+				SourceID   string `json:"source_id"`
+				SessionID  string `json:"session_id"`
+				Agent      string `json:"agent"`
+				Title      string `json:"title"`
+				AutoCommit *bool  `json:"auto_commit"`
+			}
+			if err := json.Unmarshal([]byte(r.FormValue("manifest")), &manifest); err != nil {
+				t.Error(err)
+			}
+			if manifest.SourceID == "" || manifest.SessionID != "original-sid" || manifest.Agent != "hermes" ||
+				manifest.Title != "Original title" || manifest.AutoCommit == nil || *manifest.AutoCommit {
+				t.Errorf("invalid preview manifest: %+v", manifest)
+			}
+			file, _, err := r.FormFile("session")
+			if err != nil {
+				t.Error(err)
+				w.WriteHeader(400)
+				return
+			}
+			defer file.Close()
+			got, err := io.ReadAll(file)
+			if err != nil || string(got) != body {
+				t.Error("session was truncated or changed")
+			}
+			respond(w, 200, map[string]any{"accepted": []map[string]string{{"job_id": "session-job", "status": "pending"}}})
+		case strings.HasSuffix(r.URL.Path, "/jobs/session-job"):
+			respond(w, 200, map[string]string{"job_id": "session-job", "status": "prepared", "refined_text": "Checked session note"})
+		default:
+			t.Errorf("unexpected endpoint, session must not be merged as an archive: %s", r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	defer server.Close()
+	c := defaultConfig()
+	c.API, c.Token = server.URL, "fixture"
+	s := Source{ID: "session-source", Agent: "hermes", SessionID: "original-sid", Title: "Original title",
+		Path: "/hermes/state.db", Project: "/same-project", SHA: hashText(body), Chars: len(body), Status: "ready"}
+	mustFile(t, filepath.Join(dir, "raw", s.ID+".md"), body)
+	for range 2 {
+		products, err := compactInventory(context.Background(), c, Inventory{Sources: []Source{s}}, dir, shared, func(string) {})
+		if err != nil || len(products) != 1 || products[0].Status != "approved" || products[0].Title != s.Title ||
+			products[0].JobID != "session-job" || len(products[0].References) != 1 {
+			t.Fatalf("unexpected session product: %+v %v", products, err)
+		}
+	}
+	if uploads.Load() != 1 {
+		t.Fatalf("session receipt was not reused: %d uploads", uploads.Load())
+	}
+}
+
+func TestSessionPreviewRejectsLegacyServerBeforeUpload(t *testing.T) {
+	var posts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			posts.Add(1)
+		}
+		respond(w, 200, map[string]bool{"session_upload": true})
+	}))
+	defer server.Close()
+	c := defaultConfig()
+	c.API, c.Token = server.URL, "fixture"
+	s := Source{ID: "source", Agent: "codex", SessionID: "sid", Status: "ready"}
+	_, err := compactInventory(context.Background(), c, Inventory{Sources: []Source{s}}, t.TempDir(), t.TempDir(), func(string) {})
+	if err == nil || posts.Load() != 0 {
+		t.Fatalf("legacy server could auto-publish history: %v posts=%d", err, posts.Load())
+	}
+}
+
+func TestMixedInventorySeparatesSessionsFromDocumentBatches(t *testing.T) {
+	dir, shared := t.TempDir(), t.TempDir()
+	var sessionIDs []string
+	var archiveCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/capabilities"):
+			respond(w, 200, map[string]bool{"session_preview": true})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/sessions"):
+			if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+				t.Error(err)
+				w.WriteHeader(400)
+				return
+			}
+			defer r.MultipartForm.RemoveAll()
+			var manifest map[string]any
+			if err := json.Unmarshal([]byte(r.FormValue("manifest")), &manifest); err != nil {
+				t.Error(err)
+				w.WriteHeader(400)
+				return
+			}
+			id, _ := manifest["session_id"].(string)
+			sessionIDs = append(sessionIDs, id)
+			respond(w, 200, map[string]any{"accepted": []map[string]string{{"job_id": id, "status": "pending"}}})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/archives"):
+			archiveCalls++
+			var payload struct {
+				Sources []map[string]any `json:"sources"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || len(payload.Sources) != 2 {
+				t.Errorf("ordinary documents were not batched: %+v %v", payload, err)
+			}
+			respond(w, 200, map[string]string{"job_id": "documents", "status": "pending"})
+		case strings.Contains(r.URL.Path, "/jobs/"):
+			id := filepath.Base(r.URL.Path)
+			respond(w, 200, map[string]string{"job_id": id, "status": "prepared", "refined_text": "# Checked note"})
+		default:
+			t.Errorf("unexpected endpoint: %s", r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	defer server.Close()
+	c := defaultConfig()
+	c.API, c.Token = server.URL, "fixture"
+	sources := []Source{
+		{ID: "codex-source", Agent: "codex", SessionID: "codex-sid", Path: "/codex/history.jsonl"},
+		{ID: "claude-source", Agent: "claude", Path: "/claude/history.jsonl"},
+		{ID: "doc-source", Agent: "document", Path: "/docs/history.md"},
+		{ID: "memory-source", Agent: "hermes", Path: "/hermes/memories/history.md"},
+	}
+	for i := range sources {
+		sources[i].Title, sources[i].Project, sources[i].Status = "History", "/same-project", "ready"
+		body := "user: Request\n\nassistant: Result"
+		sources[i].SHA, sources[i].Chars = hashText(body), len(body)
+		mustFile(t, filepath.Join(dir, "raw", sources[i].ID+".md"), body)
+	}
+	products, err := compactInventory(context.Background(), c, Inventory{Sources: sources}, dir, shared, func(string) {})
+	if err != nil || len(products) != 3 || archiveCalls != 1 {
+		t.Fatalf("mixed sources were not routed separately: products=%+v archives=%d err=%v", products, archiveCalls, err)
+	}
+	if strings.Join(sessionIDs, ",") != "claude-source,codex-sid" {
+		t.Fatalf("session boundaries or fallback identities lost: %v", sessionIDs)
+	}
+}
+
+func TestWaitIngestStopsOnDegradedSession(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		respond(w, 200, map[string]string{"job_id": "session-job", "status": "degraded", "stage": "refine"})
+	}))
+	defer server.Close()
+	c := defaultConfig()
+	c.API, c.Token = server.URL, "fixture"
+	job, err := waitIngest(context.Background(), c, "session-job", true)
+	if err == nil || job.Status != "degraded" {
+		t.Fatalf("degraded session was not reported: %+v %v", job, err)
 	}
 }
 

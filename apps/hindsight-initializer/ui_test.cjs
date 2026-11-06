@@ -27,25 +27,49 @@ async function cleanup() {
     const file=path.join(docs,name);await fs.writeFile(file,source);await fs.utimes(file,old,old);
   }
   await fs.writeFile(path.join(docs,'活跃记录.md'),'仍在编辑');
+  const sessions = path.join(fixture,'.codex','sessions');
+  await fs.mkdir(sessions,{recursive:true});
+  const transcript = path.join(sessions,'history.jsonl');
+  await fs.writeFile(transcript,[
+    {type:'session_meta',payload:{id:'fixture-sid',cwd:docs}},
+    {type:'response_item',payload:{role:'user',content:'保留原始要求，数据库迁移尚未完成。'}},
+    {type:'response_item',payload:{role:'assistant',content:'助手报告文档已交付；实际部署仍待验证。'}},
+  ].map(row=>JSON.stringify(row)).join('\n'));
+  await fs.utimes(transcript,old,old);
   const documents = new Map();
-  let uploads = 0, preparations = 0, completed=false;
+  let uploads = 0, preparations = 0;
+  const completed = new Set();
   const mock = http.createServer(async(req,res)=>{
-    let raw='';for await(const part of req)raw+=part;
-    const body=raw?JSON.parse(raw):{};
+    const chunks=[];for await(const part of req)chunks.push(part);
+    const raw=Buffer.concat(chunks);
+    const body=raw.length && req.headers['content-type']?.includes('application/json')?JSON.parse(raw.toString()):{};
     res.setHeader('Content-Type','application/json');
     const json=(x)=>res.end(JSON.stringify(x));
     assert.notEqual(req.url,'/chat/completions','client must never call a model endpoint');
-    if(req.url.endsWith('/capabilities')){json({model_configured:true,server_processing:true,requires_llm:true});return;}
+    if(req.url.endsWith('/capabilities')){json({model_configured:true,server_processing:true,requires_llm:true,session_preview:true});return;}
+    if(req.method==='POST'&&req.url.endsWith('/sessions')){
+      preparations++;
+      const form=await new Request('http://fixture/sessions',{method:'POST',headers:req.headers,body:raw}).formData();
+      const manifest=JSON.parse(form.get('manifest'));
+      assert.equal(manifest.session_id,'fixture-sid');
+      assert.equal(manifest.auto_commit,false,'history must wait for preview confirmation');
+      assert.equal(uploads,0);
+      assert.ok((await form.get('session').text()).includes('实际部署仍待验证'));
+      json({accepted:[{job_id:'fixture-session',status:'pending',kind:'session'}],failed:[]});return;
+    }
     if(req.method==='POST'&&req.url.endsWith('/archives')){
       preparations++;assert.equal(body.sources.length,1);
       assert.ok(Buffer.from(body.sources[0].data,'base64').toString().includes('数据库迁移尚未完成'));
       json({job_id:'fixture-one',status:'pending'});return;
     }
     if(req.method==='POST'&&req.url.endsWith('/commit')){
-      uploads++;completed=true;json({job_id:'fixture-one',status:'retaining'});return;
+      const id=req.url.split('/jobs/')[1].split('/')[0];
+      uploads++;completed.add(id);json({job_id:id,status:'retaining'});return;
     }
-    if(req.url.includes('/jobs/fixture-one')){
-      json({job_id:'fixture-one',status:completed?'completed':'prepared',refined_text:'# 项目历史决策与迁移待办\n历史记录中的数据库迁移尚未完成。 [S1]'});return;
+    if(req.url.includes('/jobs/fixture-')){
+      const id=req.url.split('/jobs/')[1].split('?')[0];
+      const text=id==='fixture-session'?'# 历史会话\n用户要求保留原始要求，数据库迁移尚未完成；助手报告文档已交付，实际部署仍待验证。':'# 项目历史决策与迁移待办\n历史记录中的数据库迁移尚未完成。 [S1]';
+      json({job_id:id,status:completed.has(id)?'completed':'prepared',refined_text:text});return;
     }
     if(req.url.includes('/mcp/')){json({jsonrpc:'2.0',id:1,result:{protocolVersion:'2024-11-05',capabilities:{},serverInfo:{name:'fixture',version:'1'}}});return;}
     if(req.url.endsWith('/stats')){json({total_documents:documents.size});return;}
@@ -93,6 +117,7 @@ async function cleanup() {
   await page.goto(launcher.url);
   await page.locator('[name=bank_id]').waitFor();
   await page.waitForFunction(()=>document.querySelector('[name=bank_id]').value.length>0);
+  assert.equal(await page.locator('[name=bank_id]').inputValue(),'agent-memory');
   await page.screenshot({path:path.join(output,'01-connection-desktop.png'),fullPage:true});
   await page.locator('[name=api_url]').fill(mockURL);
   await page.locator('[name=mcp_token]').fill('fixture-token');
@@ -105,7 +130,8 @@ async function cleanup() {
   await page.waitForFunction(()=>!document.querySelector('#test-model').disabled);
   await page.locator('#connection-form [type=submit]').click();
   for(const agent of ['codex','claude','hermes']){
-    await page.locator(`.agent[data-agent="${agent}"] [type=checkbox]`).uncheck();
+    const input=page.locator(`.agent[data-agent="${agent}"] [type=checkbox]`);
+    if(agent==='codex'){await input.check();}else{await input.uncheck();}
   }
   await page.locator('#add-root').click();
   await page.locator('#browse-dialog').waitFor({state:'visible'});
@@ -115,31 +141,33 @@ async function cleanup() {
   await page.locator('#folder-select').click();
   await page.screenshot({path:path.join(output,'02-sources-desktop.png'),fullPage:true});
   await page.locator('#scan').click();
-  await page.waitForFunction(()=>document.querySelector('#metric-ready').textContent==='1');
+  await page.waitForFunction(()=>document.querySelector('#metric-ready').textContent==='2');
   await page.locator('#confirm-source-upload').check();
   await page.waitForFunction(()=>!document.querySelector('#compact').disabled);
-  assert.equal(await page.locator('#source-rows tr').count(),3);
+  assert.equal(await page.locator('#source-rows tr').count(),4);
   await page.locator('#source-rows button').first().click();
   await page.locator('#preview-dialog').waitFor({state:'visible'});
   assert.ok((await page.locator('#preview-text').textContent()).includes('数据库迁移尚未完成'));
   await page.locator('#preview-dialog .close-dialog').click();
   await page.screenshot({path:path.join(output,'03-inventory-desktop.png'),fullPage:true});
   await page.locator('#compact').click();
-  await page.waitForFunction(()=>document.querySelector('#metric-approved').textContent==='1');
+  await page.waitForFunction(()=>document.querySelector('#metric-approved').textContent==='2');
+  assert.equal(uploads,0,'neither sessions nor documents may be retained before confirmation');
+  assert.equal(preparations,2);
   await page.waitForFunction(()=>!document.querySelector('#scan').disabled);
   await page.locator('#tab-products').click();
-  await page.locator('#product-rows button').click();
+  await page.locator('#product-rows button').first().click();
   await page.locator('#preview-dialog').waitFor({state:'visible'});
   await page.screenshot({path:path.join(output,'04-product-preview.png'),fullPage:true});
   await page.locator('#preview-dialog .close-dialog').click();
   await page.locator('#confirm-upload').check();
   await page.locator('#upload').click();
   await page.waitForFunction(()=>document.querySelector('#logs').textContent.includes('成品已确认落库'));
-  assert.equal(uploads,1);
+  assert.equal(uploads,2);
   await page.waitForFunction(()=>!document.querySelector('#upload').disabled);
   await page.locator('#upload').click();
   await page.waitForFunction(()=>document.querySelector('#logs').textContent.includes('成品已确认落库'));
-  assert.equal(uploads,1);
+  assert.equal(uploads,2);
   await page.screenshot({path:path.join(output,'05-completed-desktop.png'),fullPage:true});
   for(const size of [{width:1180,height:850},{width:840,height:620},{width:390,height:844}]){
     await page.setViewportSize(size);

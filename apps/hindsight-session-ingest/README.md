@@ -38,6 +38,7 @@
 - `original` 保留最新完整原始上传字节，`parsed_text` 保留清洗正文，`refined_text` 仅保存可发布候选；`session_segments` 保存段笔记/概览缓存，按 owner、bank、document 隔离。预览接口返回脱敏后的原文与候选稿，原文不因清洗被修改。
 - 提炼失败不会提交原文，也不会覆盖已入库的合格版本。成功段缓存可供重试复用；自动重试 3 次后状态为 `degraded`，在失败列表中可见，支持手动 retry 或相同原文重新上传。首次整理失败时检索库暂时没有此文档；已有版本则保持旧稿，可通过 `has_published_version` 区分。`completed` 只在 retain 确认完成（或候选正文与已确认版本相同）时标记。
 - 产物和初始化归档必须经过 LLM；模型不可用、超限或输出不合格时不降级入库。
+- 初始化器导入历史会话时复用 `/sessions` 和同一套会话整理规则，传入 `auto_commit=false`，先停在 `prepared` 等待确认，再调用任务的 `commit` 入库；实时钩子不传此字段，仍默认自动入库。`capabilities.session_preview=true` 表示服务端支持此流程，旧服务端未声明能力时初始化器拒绝上传会话。普通文档仍通过 `/archives` 批量归档。
 - 任务表以 (bank, document) 为主键：新版本覆盖未处理的旧版本，相同内容版本不重复处理，前一次 retain 未结束时新版本等待它结束。
 - 协调器最多同时推进 `HINDSIGHT_API_HTTP_CONCURRENCY` 篇文档（默认 3），同一文档从不并发；超长会话整理时不再阻塞其他会话。
 - 状态：pending → processing → submitting → retaining → completed；异常进入 retrying，3 次后 failed（会话提炼不合格为 degraded）；无有效正文为 skipped。failed/degraded 的文档再次上传或调用 retry 会重新排队。
