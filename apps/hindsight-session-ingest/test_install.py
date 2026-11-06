@@ -8,6 +8,13 @@ import unittest
 
 
 class InstallTests(unittest.TestCase):
+    @staticmethod
+    def isolated_env(home):
+        env = dict(os.environ, HOME=str(home), USERPROFILE=str(home))
+        for key in ("CODEX_HOME", "CLAUDE_CONFIG_DIR", "HERMES_HOME", "HINDSIGHT_CONNECTION_FILE"):
+            env.pop(key, None)
+        return env
+
     def test_upgrade_preserves_previously_approved_hook_definitions(self):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)
@@ -27,7 +34,7 @@ class InstallTests(unittest.TestCase):
             }}
             hooks_path.write_text(json.dumps(hooks))
             subprocess.run([sys.executable, str(Path(__file__).with_name('install.py'))],
-                           env=dict(os.environ, HOME=temporary, USERPROFILE=temporary),
+                           env=self.isolated_env(home),
                            check=True, capture_output=True)
             installed = json.loads(hooks_path.read_text())
             interrupt = installed['hooks'].pop('Interrupt')
@@ -44,7 +51,7 @@ class InstallTests(unittest.TestCase):
             connection.write_text('{}')
             (home / '.claude').mkdir()
             subprocess.run([sys.executable, str(Path(__file__).with_name('install.py')), '--agents', 'claude'],
-                           env=dict(os.environ, HOME=temporary, USERPROFILE=temporary),
+                           env=self.isolated_env(home),
                            check=True, capture_output=True)
             events = json.loads((home / '.claude/settings.json').read_text())['hooks']
             self.assertEqual(sorted(events), ['Stop', 'UserPromptSubmit'])
