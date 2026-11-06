@@ -31,6 +31,7 @@ type Source struct {
 	Path      string   `json:"path"`
 	SHA       string   `json:"sha256"`
 	Chars     int      `json:"chars"`
+	Bytes     int64    `json:"bytes"`
 	Modified  string   `json:"modified"`
 	Status    string   `json:"status"`
 	Reason    string   `json:"reason,omitempty"`
@@ -306,58 +307,9 @@ func walkSafe(ctx context.Context, root string, visit func(string, os.FileInfo) 
 }
 
 func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (Inventory, error) {
-	inv := Inventory{Sources: []Source{}}
-	seenPath, seenHash := map[string]bool{}, map[string]int{}
-	totalBytes := 0
-	add := func(s Source) error {
-		if len(inv.Sources) >= 20000 {
-			return errors.New("超过 20,000 篇扫描上限，请缩小范围")
-		}
-		if s.Status == "" {
-			if s.Agent != "document" {
-				s.Text = strings.TrimSpace(redact(s.Text))
-			}
-			if s.Text == "" {
-				s.Status, s.Reason = "skipped", "无正文"
-			}
-		}
-		if utf8.ValidString(s.Text) {
-			s.Chars = utf8.RuneCountInString(s.Text)
-		}
-		s.ID = hashText(s.Agent + "\x00" + s.Path + "\x00" + s.SessionID)
-		if s.Title == "" {
-			s.Title = strings.TrimSuffix(filepath.Base(s.Path), filepath.Ext(s.Path))
-		}
-		s.Title = redact(s.Title)
-		if s.Project == "" {
-			s.Project = filepath.Dir(s.Path)
-		}
-		if s.Status == "" {
-			s.SHA = hashText(s.Text)
-			hashKey := s.Project + "\x00" + s.SHA
-			if idx, ok := seenHash[hashKey]; ok {
-				s.Status, s.Reason = "duplicate", inv.Sources[idx].ID
-				inv.Sources[idx].Aliases = append(inv.Sources[idx].Aliases, s.ID)
-			} else {
-				s.Status = "ready"
-				seenHash[hashKey] = len(inv.Sources)
-				totalBytes += len(s.Text)
-				if totalBytes > 256*1024*1024 {
-					return errors.New("正文总量超过 256 MB，请分批扫描")
-				}
-				inv.Ready++
-				inv.Chars += s.Chars
-			}
-			if err := atomicWrite(filepath.Join(root, "raw", s.ID+".md"), []byte(s.Text), 0600); err != nil {
-				return err
-			}
-		}
-		if s.Status != "ready" {
-			inv.Skipped++
-		}
-		inv.Sources = append(inv.Sources, s)
-		return nil
-	}
+	builder := newInventoryBuilder(root, Inventory{})
+	seenPath := map[string]bool{}
+	add := builder.add
 	age := time.Duration(cfg.IdleHours) * time.Hour
 	max := int64(cfg.MaxFileMB) * 1024 * 1024
 	for _, agent := range []string{"codex", "claude", "hermes"} {
@@ -372,7 +324,7 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 			if _, err := os.Stat(db); err == nil {
 				if err = scanHermesDB(ctx, db, age, max, add); err != nil {
 					if e := add(Source{Agent: agent, Path: db, Status: "error", Reason: err.Error()}); e != nil {
-						return inv, e
+						return builder.inv, e
 					}
 				}
 			}
@@ -427,7 +379,7 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 			})
 			if err != nil {
 				if e := add(Source{Agent: agent, Path: path, Status: "error", Reason: err.Error()}); e != nil {
-					return inv, e
+					return builder.inv, e
 				}
 			}
 		}
@@ -463,14 +415,14 @@ func scanLocal(ctx context.Context, cfg Config, root string, log func(string)) (
 		})
 		if err != nil {
 			if e := add(Source{Agent: "document", Path: path, Status: "error", Reason: err.Error()}); e != nil {
-				return inv, e
+				return builder.inv, e
 			}
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return inv, err
+		return builder.inv, err
 	}
-	return inv, atomicJSON(filepath.Join(root, "inventory.json"), inv)
+	return builder.inv, atomicJSON(filepath.Join(root, "inventory.json"), builder.inv)
 }
 
 func scanHermesDB(ctx context.Context, path string, age time.Duration, max int64, add func(Source) error) error {

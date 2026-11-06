@@ -39,6 +39,12 @@
 
       <section id="sources" class="view" hidden>
         <div class="section-heading"><div><p class="eyebrow">SOURCES</p><h1>提取范围</h1></div><button id="save-sources" class="secondary"><i data-lucide="save"></i>保存范围</button></div>
+        <div class="discovery-toolbar">
+          <fieldset class="scan-modes" aria-label="智能扫描范围"><label><input type="radio" name="discovery-mode" value="all" checked>全电脑</label><label><input type="radio" name="discovery-mode" value="directory">指定目录</label></fieldset>
+          <button id="discover" class="primary"><i data-lucide="hard-drive-download"></i>一键发现来源</button>
+        </div>
+        <div id="discovery-directory" class="root-item" hidden><input id="discovery-path" aria-label="智能扫描目录" placeholder="目录绝对路径"><button id="browse-discovery" class="icon" title="选择扫描目录" aria-label="选择扫描目录"><i data-lucide="folder-open"></i></button></div>
+        <div id="discovery-volumes" class="volume-list"></div>
         <h2><i data-lucide="messages-square"></i>智能体历史会话</h2>
         <div id="agent-list" class="agent-list"></div>
         <div class="heading-row"><h2><i data-lucide="folders"></i>本地文档目录</h2><button id="add-root" class="secondary compact"><i data-lucide="folder-plus"></i>添加目录</button></div>
@@ -59,7 +65,9 @@
         <div id="source-panel">
           <div class="selection"><label><input id="select-all" type="checkbox">全选待处理</label><span id="selection-count" class="muted">已选 0 篇</span></div>
           <div class="table-wrap"><table><thead><tr><th class="check-col"></th><th>来源 / 项目</th><th>类型</th><th>字符</th><th>状态</th><th></th></tr></thead><tbody id="source-rows"></tbody></table></div>
+          <div id="source-pager" class="source-pager" hidden><span id="source-page-count"></span><button id="source-prev" class="icon" title="上一页" aria-label="上一页"><i data-lucide="chevron-left"></i></button><span id="source-page"></span><button id="source-next" class="icon" title="下一页" aria-label="下一页"><i data-lucide="chevron-right"></i></button></div>
           <div id="source-empty" class="empty"><i data-lucide="files"></i><span>尚无扫描结果</span></div>
+          <div class="footer-actions"><button id="extract" class="secondary"><i data-lucide="file-input"></i>提取所选来源</button></div>
           <div class="upload-consent"><label><input id="confirm-source-upload" type="checkbox">确认上传所选来源至服务端准备区，供解析与模型核验</label></div>
           <div class="footer-actions"><button id="compact" class="primary"><i data-lucide="cloud-upload"></i>上传并生成服务端预览</button></div>
         </div>
@@ -79,7 +87,7 @@
         <div class="footer-actions split"><button id="restore" class="secondary"><i data-lucide="undo-2"></i>恢复上次接入配置</button><button id="install" class="primary"><i data-lucide="plug-zap"></i>配置所选智能体</button></div>
       </section>
     </main>
-    <aside class="activity"><div class="activity-heading"><h2><i data-lucide="list-checks"></i>执行记录</h2><span id="job-badge" class="badge">待命</span></div><div id="job-error" role="alert" hidden></div><div id="logs"><p class="log-placeholder">暂无执行记录</p></div><button id="cancel" class="secondary" hidden><i data-lucide="square"></i>取消任务</button><div class="activity-bottom"><i data-lucide="hard-drive"></i><span>本地原始记录始终保留</span></div></aside>
+    <aside class="activity"><div class="activity-heading"><h2><i data-lucide="list-checks"></i>执行记录</h2><span id="job-badge" class="badge">待命</span></div><div id="discovery-progress" hidden><strong id="discovery-stage"></strong><progress id="scan-progress"></progress><div class="scan-counts"><span id="scan-visited"></span><span id="scan-found"></span></div><div id="scan-current"></div></div><div id="job-error" role="alert" hidden></div><div id="logs"><p class="log-placeholder">暂无执行记录</p></div><button id="cancel" class="secondary" hidden><i data-lucide="square"></i>取消任务</button><div class="activity-bottom"><i data-lucide="hard-drive"></i><span>本地原始记录始终保留</span></div></aside>
   </div>
   <div id="toast" role="status" hidden></div>
   <dialog id="preview-dialog"><div class="dialog-heading"><h2 id="preview-title">正文预览</h2><button class="icon close-dialog" title="关闭预览" aria-label="关闭预览"><i data-lucide="x"></i></button></div><pre id="preview-text"></pre><p id="preview-note" class="muted"></p></dialog>

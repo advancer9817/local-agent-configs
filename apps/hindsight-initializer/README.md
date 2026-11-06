@@ -40,6 +40,9 @@ ssh -L 19081:127.0.0.1:19081 user@linux-host
 
 ## 扫描支持
 
+- “一键发现来源”支持全电脑和指定目录。Windows 枚举可访问的本地固定盘、移动盘；Linux 扫描本机文件系统和可见挂载点。默认与非默认位置的 Codex、Claude Code、Hermes 会话按支持的目录布局识别，包含其他用户目录中当前账号可访问的来源及 Hermes profile。
+- 发现阶段只读文件名、大小和修改时间，不读取正文、不联网。结果分页显示，可取消并保留部分清单；选中后通过“提取所选来源”本地预检和提取，再明确确认上传到服务端。未选中的来源保持待提取，重开应用可继续。
+- 系统、凭据、依赖、缓存、隐藏的非智能体目录和符号链接不遍历；无权限位置跳过并记录。网络盘不自动扫描；Windows 不自动进入 WSL 的虚拟磁盘，WSL 应运行 Linux 版。受权限、格式和过滤规则限制，不表示任意软件的所有历史格式都支持。
 - Codex：数据目录下 `sessions/**/*.jsonl`、`archived_sessions/**/*.jsonl`，只解析 canonical `response_item`，不重复读取 `event_msg`，不导入内部 reasoning。
 - Claude Code：`projects/**/*.jsonl` 中的 user/assistant 文本。
 - Hermes：只读 `state.db`（包含 WAL 一致性读取、已结束会话；恢复 `compacted=1` 的原始轮次，排除生成的压缩摘要、回退消息和系统提示，保留 steer 插话），同时支持 `sessions/` 中 JSON/JSONL 导出与 `memories/` 中 Markdown。未知数据库结构显式列为错误，不静默当作扫描完成。

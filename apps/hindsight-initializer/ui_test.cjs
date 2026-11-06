@@ -169,6 +169,42 @@ async function cleanup() {
   await page.waitForFunction(()=>document.querySelector('#logs').textContent.includes('成品已确认落库'));
   assert.equal(uploads,2);
   await page.screenshot({path:path.join(output,'05-completed-desktop.png'),fullPage:true});
+  const discoveryRoot=path.join(fixture,'discovery-fixture');
+  await fs.mkdir(path.join(discoveryRoot,'other-user','.codex','sessions'),{recursive:true});
+  const discoveredSession=path.join(discoveryRoot,'other-user','.codex','sessions','history.jsonl');
+  await fs.copyFile(transcript,discoveredSession);await fs.utimes(discoveredSession,old,old);
+  for(let i=0;i<1105;i++){
+    const file=path.join(discoveryRoot,'note-'+String(i).padStart(4,'0')+'.md');
+    await fs.writeFile(file,'Original document '+i);await fs.utimes(file,old,old);
+  }
+  await page.setViewportSize({width:1380,height:960});
+  await page.locator('.step[data-step="sources"]').click();
+  await page.locator('[name=discovery-mode][value=directory]').check();
+  await page.locator('#discovery-path').fill(discoveryRoot);
+  const beforeDiscovery={uploads,preparations};
+  await page.locator('#discover').click();
+  await page.waitForFunction(()=>document.querySelector('#source-count').textContent==='1,106');
+  await page.waitForFunction(()=>!document.querySelector('#discover').disabled);
+  assert.deepEqual({uploads,preparations},beforeDiscovery,'discovery must not call remote services');
+  assert.equal(await page.locator('#source-rows tr').count(),100);
+  assert.equal(await page.locator('#source-page').textContent(),'1 / 12');
+  await page.locator('#source-next').click();
+  assert.equal(await page.locator('#source-page').textContent(),'2 / 12');
+  await page.locator('#filter').fill('note-1104');
+  assert.equal(await page.locator('#source-rows tr').count(),1,'sources beyond the former 1,000-row limit must be reachable');
+  await page.locator('#select-all').uncheck();
+  await page.locator('#source-rows input[type=checkbox]').check();
+  assert.equal(await page.locator('#compact').isDisabled(),true,'unextracted sources cannot be uploaded');
+  await page.locator('#extract').click();
+  await page.waitForFunction(()=>document.querySelector('#metric-ready').textContent==='1');
+  await page.waitForFunction(()=>!document.querySelector('#discover').disabled);
+  assert.equal(await page.locator('#selection-count').textContent(),'已选 1 篇');
+  assert.deepEqual({uploads,preparations},beforeDiscovery,'local extraction must not upload');
+  await page.locator('#filter').fill('history.jsonl');
+  assert.ok((await page.locator('#source-rows').textContent()).includes('Codex'),'non-default agent homes must be detected');
+  assert.ok((await page.locator('#source-rows').textContent()).includes('待提取'));
+  await page.locator('#filter').fill('');
+  await page.screenshot({path:path.join(output,'06-smart-discovery-desktop.png'),fullPage:true});
   for(const size of [{width:1180,height:850},{width:840,height:620},{width:390,height:844}]){
     await page.setViewportSize(size);
     for(const step of ['connection','sources','archive','clients']){

@@ -39,6 +39,7 @@ type App struct {
 	scanDir   string
 	inventory Inventory
 	products  []Product
+	discovery DiscoveryProgress
 	job       Job
 	cancel    context.CancelFunc
 	shutdown  func()
@@ -127,8 +128,9 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		respond(w, 200, map[string]any{"config": publicConfig(a.cfg), "job": a.job, "inventory": a.inventory, "products": a.products, "home": homePath(), "data_dir": a.root, "os": runtime.GOOS})
+		respond(w, 200, map[string]any{"config": publicConfig(a.cfg), "job": a.job, "inventory": a.inventory, "products": a.products, "discovery": a.discovery, "home": homePath(), "data_dir": a.root, "os": runtime.GOOS})
 	})
+	a.registerDiscovery(mux)
 	mux.HandleFunc("POST /api/config", func(w http.ResponseWriter, r *http.Request) {
 		var cfg Config
 		if err := decode(w, r, &cfg); err != nil {
